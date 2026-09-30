@@ -1,0 +1,138 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Build wheel
+        run: |
+          uv build --wheel
+          ls -la dist/
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-py${{ matrix.python }}
+          path: dist/*.whl
+          retention-days: 30
+
+  create-release:
+    needs: build-and-release
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all wheels
+        uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-py*
+          merge-multiple: true
+          path: dist/
+
+      - name: Verify wheels
+        run: |
+          ls -la dist/
+          for w in dist/*.whl; do
+            echo "=== $w ==="
+            unzip -l "$w" | head -20
+          done
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum *.whl > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Parley ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            dist/*.whl
+            dist/SHA256SUMS.txt
+          body: |
+            ## Parley ${{ github.ref_name }}
+
+            ### Installation
+
+            **From GitHub Release (recommended):**
+            ```bash
+            # Pick the wheel for your Python version
+            pip install https://github.com/Sachitt-AV-08/parley/releases/download/${{ github.ref_name }}/parley_wa-<version>-py3-none-any.whl
+            ```
+
+            **From Git (always latest):**
+            ```bash
+            pip install 'parley-wa[mcp]@git+https://github.com/Sachitt-AV-08/parley.git@${{ github.ref_name }}'
+            uv pip install 'parley-wa[mcp]@git+https://github.com/Sachitt-AV-08/parley.git@${{ github.ref_name }}'
+            ```
+
+            **Windows (PowerShell):**
+            ```powershell
+            irm https://raw.githubusercontent.com/Sachitt-AV-08/parley/main/install.ps1 | iex
+            ```
+
+            **macOS / Linux:**
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/Sachitt-AV-08/parley/main/install.sh | sh
+            ```
+
+            ### Verification
+            ```bash
+            sha256sum -c SHA256SUMS.txt
+            ```
+
+            ### Changes
+            See commit history since last release.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-installers:
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify install.ps1
+        run: pwsh -c ". .\install.ps1; Write-Host 'OK'" 2>&1 | head -5 || true
+
+      - name: Verify install.sh
+        run: bash -n install.sh && echo "install.sh OK"
