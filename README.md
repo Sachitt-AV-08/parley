@@ -40,8 +40,10 @@ curl -fsSL https://raw.githubusercontent.com/Sachitt-AV-08/parley/main/install.s
 ```
 
 The installer detects `uv` → `pipx` → `pip`, installs `parley-wa` (CLI, TUI and
-MCP extras) from the [latest release](#release), enables the local debugging
-port, and prints the two commands to start.
+MCP extras) from the latest [GitHub Release](https://github.com/Sachitt-AV-08/parley/releases)
+(sha256 checksums included), enables the local debugging port, and prints the
+two commands to start. `pip install 'parley-wa'[mcp]` works **once the PyPI
+publish lands**; until then use the installer or a release wheel URL.
 
 **One line to send from a script on any machine:**
 
@@ -72,7 +74,18 @@ parley --demo tui
 
 ---
 
-## Why parley exists
+## Threat model
+
+parley works by enabling WebView2's remote debugging port. While it's enabled,
+any process running as your user can drive your logged-in WhatsApp session and
+read all chats. parley does not add auth to that port; it is a local-machine
+trust boundary. If that's not acceptable for your machine, don't run `parley setup`.
+
+Mitigations: run `parley setup --undo` when not in use; the HTTP API requires a
+token and rejects browser origins; the MCP server is read-only unless
+`--allow-send` is set; scheduled sends honor the same human pacing budget.
+Not covered: malware already running as your user; untrusted content in chats
+(prompt injection) if you give an agent send access.
 
 The mainstream way to automate WhatsApp is a **cloud service** — or a library
 that quietly talks to one. Your chats, your contacts, your fingerprints transit
@@ -86,14 +99,16 @@ parley takes the opposite side:
 > enabled), and drives the very page you're looking at. Everything stays on
 > `127.0.0.1`.
 
-The result: no new login, no re-encoding of credentials, no upload, no ban-risk
-multiplier — automation for **your own account, on your own screen**, as if a
-tireless human assistant with hands were sitting at your desk.
+The result: no new login, no re-encoding of credentials, no upload — automation
+for **your own account, on your own screen**, as if a tireless human assistant
+with hands were sitting at your desk. **Ban risk is unknown/untested**; automating
+your own account may violate WhatsApp's Terms of Service (see [ToS](https://www.whatsapp.com/legal/terms-of-service)).
 
-- Windows — WhatsApp Desktop renders WhatsApp Web in **WebView2** (Chromium).
-  parley turns on its debugging channel with `parley setup` and connects.
-- macOS / Linux — same CLI attaches to any Chromium with
-  `--remote-debugging-port=9334` pointed at `web.whatsapp.com`.
+- **Windows (verified)** — WhatsApp Desktop renders WhatsApp Web in **WebView2**
+  (Chromium). parley turns on its debugging channel with `parley setup` and connects.
+- **macOS / Linux** — Chromium + `web.whatsapp.com` **with QR login required**.
+  `PARLEY_CDP_HOST` / `PARLEY_CDP_PORT` point parley at whatever machine exposes
+  the debugging port.
 - Remote / containers — `PARLEY_CDP_HOST` / `PARLEY_CDP_PORT` point parley at
   whatever machine exposes the port.
 
@@ -147,7 +162,7 @@ curl -X POST localhost:8300/send -H "content-type: application/json" \
 Every command supports `--json` for piping into scripts, agents and cron.
 Scheduled entries live in `~/.parley/schedules.json` (override with
 `PARLEY_DATA_DIR`), and `parley server` watches the queue in the background —
-a scheduled blast obeys the same pacing and budget as a manual send.
+a scheduled send obeys the same pacing and budget as a manual send.
 
 ## How it actually works
 
@@ -193,7 +208,7 @@ Claude Desktop, Claude Code, Cursor, Copilot, or any agent framework — can rea
 chats and send/reply/react/schedule on your real WhatsApp, locally.
 
 ```bash
-pip install 'parley-wa[mcp]'     # install with the MCP extra
+pip install 'parley-wa[mcp]'     # not yet on PyPI — use installer or release wheel
 parley mcp                       # serve an MCP stdio server on your live account
 ```
 
@@ -250,15 +265,14 @@ Every number is paced down further by `HumanPacing` before it touches the wire.
 | | parley | WhatsApp Cloud API | web-scraping "bots" | "tools-in-the-cloud" platforms |
 |---|---|---|---|---|
 | where data lives | **your machine** | Meta | random VPS | their cloud |
-| new login / QR needed | no | yes (business mgr) | sometimes | yes |
+| new login / QR needed | no (Windows) / QR (macOS/Linux) | yes (business mgr) | sometimes | yes |
 | cost | **free, open source** | usage-metered | blocked fast | subscriptions |
-| ban profile | low (your own desktop) | official but gated | high | high |
 | offline dev / CI | **yes (`--demo`)** | no | no | no |
 | self-hostable | **yes** | no | makeshift | no |
 
 ## Human by default
 
-Blasting is how accounts get flagged. parley's `HumanPacing`:
+Sending too fast is how accounts get flagged. parley's `HumanPacing`:
 
 - types for ~90 ms/character (bounded), jittered;
 - sleeps a variable "network" beat before each *sent*;
@@ -272,7 +286,7 @@ the responsible party for your own account.
 - parley **never** sees, stores or transmits your credentials, chats, contacts
   or session state. All traffic stays on `127.0.0.1`.
 - Sends are paced and budgeted by design. Read operations never write.
-- Treaty: use your own account, your own device, your own automation — comply
+- Terms: use your own account, your own device, your own automation — comply
   with local law and WhatsApp's ToS. The issues tracker is open for questions.
 - If you expose the HTTP server beyond loopback, set `--token` and use TLS in
   front — and honestly, don't; keep it on `127.0.0.1`.
