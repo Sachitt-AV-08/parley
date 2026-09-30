@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & "works on this build" reports
+    url: https://github.com/Sachitt-AV-08/parley/discussions
+    about: Ask anything, or tell us which WhatsApp/WebView2 build you verified.

@@ -1,0 +1,31 @@
+name: Feature request
+description: A capability you'd love, with the use-case that makes it real.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: pitch
+    attributes:
+      label: What do you want to be able to do?
+      description: One concrete sentence beats a paragraph of "nice to have"s.
+    validations:
+      required: true
+  - type: textarea
+    id: usecase
+    attributes:
+      label: What does your flow look like today without it?
+    validations:
+      required: true
+  - type: textarea
+    id: shape
+    attributes:
+      label: Rough shape you'd imagine
+      description: CLI flag, SDK method, HTTP endpoint, pacing option — feel free to sketch.
+    validations:
+      required: false
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and the README for this first.
+          required: true

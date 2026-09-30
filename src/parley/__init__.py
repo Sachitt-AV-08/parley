@@ -14,7 +14,7 @@ Design points:
 
 Try it::
 
-    python -m pip install parley
+    python -m pip install https://github.com/Sachitt-AV-08/parley/releases/download/v0.2.0/parley_wa-0.2.0-py3-none-any.whl
     parley setup        # enable the local WebView2 debugging port
     parley status       # confirm the desktop app is attached
     parley chats        # list recent conversations

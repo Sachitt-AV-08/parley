@@ -52,7 +52,7 @@ class WebViewBackend:
         try:
             from playwright.sync_api import sync_playwright
         except ImportError as exc:
-            raise ProtocolError("playwright is required for the CDP backend (pip install parley[cdp])") from exc
+            raise ProtocolError("playwright is required for the CDP backend (pip install playwright)") from exc
 
         self._pw = None
         self.cdp_host = host

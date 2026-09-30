@@ -326,7 +326,7 @@ def cmd_tui(args) -> int:
     try:
         from .tui import run as run_tui
     except ImportError:  # pragma: no cover
-        print("the TUI needs `textual`:  pip install 'parley[tui]'", file=sys.stderr)
+        print("the TUI needs `textual`:  pip install 'parley-wa[tui]'", file=sys.stderr)
         return 2
     run_tui(demo=args.demo)
     return 0
