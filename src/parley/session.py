@@ -64,7 +64,14 @@ class Session:
 
     # -------------------------------------------------------------- reads
     def status(self) -> dict:
-        return self.backend.status()
+        st = self.backend.status()
+        st["pacing"] = {
+            "window_seconds": self.pacing.window_seconds,
+            "window_budget": self.pacing.window_budget,
+            "budget_used": self.pacing.window_budget - self.pacing.budget_remaining(),
+            "budget_remaining": self.pacing.budget_remaining(),
+        }
+        return st
 
     def contacts(self) -> list[Contact]:
         return self.backend.contacts()
