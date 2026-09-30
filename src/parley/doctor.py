@@ -259,6 +259,18 @@ def doctor(port: int = DEFAULT_PORT) -> dict:
     checks.append(
         {"name": f"CDP endpoint 127.0.0.1:{port}", "ok": endpoint, "detail": "open" if endpoint else "closed"}
     )
+    if endpoint:
+        checks.append(
+            {
+                "name": "SECURITY WARNING",
+                "ok": False,
+                "detail": (
+                    "The WebView2 debugging port is OPEN — ANY process running as you "
+                    "can drive your WhatsApp session and read all chats. "
+                    "Run `parley setup --undo` when finished, or close WhatsApp Desktop."
+                ),
+            }
+        )
     checks.append(
         {
             "name": "parley import",

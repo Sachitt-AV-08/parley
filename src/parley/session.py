@@ -21,6 +21,7 @@ from .backends.webview import DEFAULT_PORT, WebViewBackend
 from .errors import ProtocolError
 from .models import Chat, Contact, Message, OutboxMessage
 from .pacing import HumanPacing
+from .scheduler import audit_send
 
 DEFAULT_RETRIES = 2
 DEFAULT_RETRY_BACKOFF = 2.0
@@ -159,24 +160,30 @@ class Session:
     def send(self, chat: str, text: str) -> Message:
         """Send `text` to a chat id, contact name, group subject, or number."""
         chat_id, name = self.resolve_recipient(chat)
-        return self._guarded(
+        msg = self._guarded(
             lambda: self.backend.send(OutboxMessage(chat=chat_id, text=str(text), name=name))
         )
+        audit_send(chat_id, name or chat, text, source="send")
+        return msg
 
     def reply(self, message_id: str, text: str) -> Message:
         """Reply to a message by id (quote it when the host supports it)."""
         target = self.find_message(message_id)
         if target is None:
             raise ValueError(f"could not locate message {message_id!r}")
-        return self._guarded(
+        msg = self._guarded(
             lambda: self.backend.send(OutboxMessage(chat=target.chat, text=str(text), quoted_message_id=message_id))
         )
+        audit_send(target.chat, target.chat, text, source="reply")
+        return msg
 
     def react(self, message_id: str, emoji: str | None) -> Message:
         """React (or clear a reaction with ``emoji=None``) on a message by id."""
         if not self.find_message(message_id):
             raise ValueError(f"could not locate message {message_id!r}")
-        return self._guarded(lambda: self.backend.react(message_id, emoji))
+        msg = self._guarded(lambda: self.backend.react(message_id, emoji))
+        audit_send(message_id, message_id, emoji or "clear", source="react")
+        return msg
 
     # ------------------------------------------------------------- helpers
     def _resolve_chat_id(self, chat: str) -> str:

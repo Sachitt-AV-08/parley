@@ -18,8 +18,10 @@ import threading
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 
-from .session import Session
+if TYPE_CHECKING:
+    from .session import Session
 
 DEFAULT_DATA_DIR = os.path.join(os.path.expanduser("~"), ".parley")
 
@@ -35,6 +37,50 @@ def data_dir() -> str:
 def default_store_path() -> str:
     return os.path.join(data_dir(), "schedules.json")
 
+
+def audit_log_path() -> str:
+    return os.path.join(data_dir(), "audit.jsonl")
+
+
+def _ensure_data_dir() -> None:
+    """Create the data directory with owner-only permissions (POSIX)."""
+    os.makedirs(data_dir(), mode=0o700, exist_ok=True)
+
+
+def audit_send(chat_id: str, recipient: str, text: str, source: str = "send") -> None:
+    """Append a single audit line for a sent message.
+
+    Stored as ``~/.parley/audit.jsonl`` (0600 on POSIX). Each line is a JSON
+    object: ``ts, chat_id, recipient, text_preview, source``.
+    """
+    _ensure_data_dir()
+    import datetime as _dt
+    preview = (text[:80] + "…") if len(text) > 80 else text
+    line = json.dumps(
+        {
+            "ts": _dt.datetime.now().isoformat(timespec="seconds"),
+            "chat_id": chat_id,
+            "recipient": recipient,
+            "text_preview": preview,
+            "source": source,
+        },
+        ensure_ascii=False,
+    )
+    path = audit_log_path()
+    tmp = f"{path}.tmp"
+    try:
+        with open(path, encoding="utf-8") as fh:
+            content = fh.read()
+    except OSError:
+        content = ""
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(content)
+        if content and not content.endswith("\n"):
+            fh.write("\n")
+        fh.write(line + "\n")
+    if os.name != "nt":
+        os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
 
 @dataclass
 class ScheduleEntry:
@@ -87,10 +133,12 @@ class Scheduler:
             self._entries = {}
 
     def _save(self) -> None:
-        os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
+        _ensure_data_dir()
         tmp = f"{self.path}.tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump([asdict(e) for e in self._entries.values()], fh, ensure_ascii=False, indent=2)
+        if os.name != "nt":
+            os.chmod(tmp, 0o600)
         os.replace(tmp, self.path)
 
     # ----------------------------------------------------------------- api
@@ -153,9 +201,12 @@ class Scheduler:
     def fire_due(self, now: datetime | None = None) -> list[ScheduleEntry]:
         """Fire every due entry through the session; roll repeats forward.
 
-        Returns the entries that fired (sent or failed). Never raises on a
-        single bad recipient — that entry is marked failed and reported.
+        Returns the entries that fired (sent or failed). A bad recipient marks
+        that entry failed and continues; but a budget-exhaustion aborts the
+        whole batch (loud failure — caller must handle).
         """
+        from .pacing import BudgetExceeded
+
         now = now or datetime.now()
         if self.session is None:
             raise RuntimeError("scheduler has no session; create it with a Session so sends can fire")
@@ -167,6 +218,15 @@ class Scheduler:
                     self.session.send(entry.to, entry.text)
                     entry.status = "sent"
                     entry.last_error = None
+                    audit_send(entry.to, entry.to, entry.text, source="scheduler")
+                except BudgetExceeded as exc:
+                    entry.status = "failed"
+                    entry.last_error = f"budget_exceeded: {exc}"
+                    audit_send(entry.to, entry.to, entry.text, source="budget_exceeded")
+                    entry.last_fired = now.strftime(ISO)
+                    fired.append(entry)
+                    self._save()
+                    raise  # loud: abort the batch, caller sees it
                 except Exception as exc:  # noqa: BLE001 - one failure must not stall the queue
                     entry.status = "failed"
                     entry.last_error = str(exc)
