@@ -133,11 +133,14 @@ class WebViewBackend:
                 logged_in = True if not logged_in else logged_in
         except Exception:
             st = {}
+        store_available = bool(st.get("store")) or self._store_known
+        read_path = "store" if store_available else "dom"
         return {
             "backend": "webview",
             "brand": "WhatsApp Desktop (CDP / WebView2)",
             "cdp": f"{self.cdp_host}:{self.cdp_port}",
-            "store": bool(st.get("store")) or self._store_known,
+            "store": store_available,
+            "read_path": read_path,
             "loggedIn": logged_in,
             "me": st.get("me"),
             "url": self._page.url,

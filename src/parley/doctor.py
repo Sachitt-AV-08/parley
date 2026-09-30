@@ -271,6 +271,28 @@ def doctor(port: int = DEFAULT_PORT) -> dict:
                 ),
             }
         )
+    if endpoint and platform == "win32":
+        try:
+            from .session import parley_connect
+            sess = parley_connect(port=port)
+            st = sess.status()
+            read_path = st.get("read_path", "unknown")
+            checks.append(
+                {
+                    "name": "WhatsApp read path",
+                    "ok": True,
+                    "detail": f"{read_path} (store={st.get('store', False)})",
+                }
+            )
+            sess.close()
+        except Exception as exc:
+            checks.append(
+                {
+                    "name": "WhatsApp read path",
+                    "ok": None,
+                    "detail": f"could not detect: {exc}",
+                }
+            )
     checks.append(
         {
             "name": "parley import",
