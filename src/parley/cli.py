@@ -332,6 +332,43 @@ def cmd_tui(args) -> int:
     return 0
 
 
+def cmd_mcp(args) -> int:
+    try:
+        from .backends.webview import DEFAULT_PORT
+        from .mcp_server import run as run_mcp
+    except ImportError as exc:  # pragma: no cover
+        print(f"the MCP server needs the `mcp` SDK:  pip install 'parley-wa[mcp]'  ({exc})", file=sys.stderr)
+        return 2
+    return run_mcp(demo=args.demo, name=args.name, port=args.port or DEFAULT_PORT)
+
+
+def cmd_skill(args) -> int:
+    """Install the Claude Code agent skill so any parley-enabled agent knows how to drive WhatsApp."""
+    from pathlib import Path
+
+    try:
+        import importlib.resources as resources
+
+        source = resources.files("parley").joinpath("skills/parley/SKILL.md")
+        text = source.read_text(encoding="utf-8")
+    except FileNotFoundError:  # pragma: no cover
+        print("skill not shipped in this install; update parley-wa", file=sys.stderr)
+        return 2
+    dest_root = Path(args.dest) if args.dest else Path.home() / ".claude" / "skills"
+    dest = dest_root / "parley" / "SKILL.md"
+    if dest.exists() and not args.force:
+        print(f"parley skill already installed at {dest} (use --force to overwrite)")
+        return 0
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(text, encoding="utf-8")
+    print(f"installed parley skill -> {dest}")
+    print("tell your agent to 'read the parley skill' or just describe the task; it will load it automatically.")
+    print("\nFor generic MCP clients add this server (stdio):")
+    print("    parley mcp")
+    print("Claude Desktop apps like Claude Code / Cursor can use `parley mcp` directly.")
+    return 0
+
+
 # ------------------------------------------------------------------- parser
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -399,6 +436,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("tui", help="terminal UI (needs `parley[tui]`)")
 
+    p_mcp = sub.add_parser("mcp", help="run an MCP server so AI agents can drive WhatsApp (needs `parley[mcp]`)")
+    p_mcp.add_argument("--name", default="parley", help="server name shown by MCP clients")
+
+    p_skill = sub.add_parser("skill", help="install the Claude Code agent skill to ~/.claude/skills")
+    p_skill.add_argument("--force", action="store_true", help="overwrite an existing skill install")
+    p_skill.add_argument("--dest", default=None, help="target skills dir (default ~/.claude/skills)")
+
     return parser
 
 
@@ -446,6 +490,8 @@ def main(argv: list[str] | None = None) -> int:
         "schedule": cmd_schedule,
         "server": cmd_server,
         "tui": cmd_tui,
+        "mcp": cmd_mcp,
+        "skill": cmd_skill,
     }
     try:
         code = handlers[args.command](args)
