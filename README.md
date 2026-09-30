@@ -27,10 +27,26 @@
   <img src="https://raw.githubusercontent.com/Sachitt-AV-08/parley/main/assets/demo.gif" alt="parley demo" width="78%">
 </p>
 
+**One line to install on any machine:**
+
+```sh
+# Windows (PowerShell) — runs the installer: install + enable the port + next steps
+irm https://raw.githubusercontent.com/Sachitt-AV-08/parley/main/install.ps1 | iex
+```
+
+```sh
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/Sachitt-AV-08/parley/main/install.sh | sh
+```
+
+The installer detects `uv` → `pipx` → `pip`, installs `parley-wa` (CLI, TUI and
+MCP extras) from the [latest release](#release), enables the local debugging
+port, and prints the two commands to start.
+
 **One line to send from a script on any machine:**
 
 ```bash
-pip install https://github.com/Sachitt-AV-08/parley/releases/download/v0.2.0/parley_wa-0.2.0-py3-none-any.whl
+pip install 'parley-wa'[mcp]      # or: pip install <release wheel URL>
 parley setup            # enable the local debugging port (auto-undoable)
 parley send --to Ava --text "ci is green"   # resolves Ava -> live chat -> sends -> confirms it landed
 ```
@@ -167,6 +183,41 @@ a scheduled blast obeys the same pacing and budget as a manual send.
 `DemoBackend` implements the same backend protocol entirely in memory — that's
 what powers `--demo`, the unit tests and the CI.
 
+## Give your AI agent hands on WhatsApp
+
+parley ships a **Model Context Protocol (MCP) server**, so any MCP client —
+Claude Desktop, Claude Code, Cursor, Copilot, or any agent framework — can read
+chats and send/reply/react/schedule on your real WhatsApp, locally.
+
+```bash
+pip install 'parley-wa[mcp]'     # install with the MCP extra
+parley mcp                       # serve an MCP stdio server on your live account
+```
+
+Point your client at it. Claude Desktop-style config (the command must honor the
+`--demo` global flag placement — it goes *before* the subcommand):
+
+```json
+{
+  "mcpServers": {
+    "parley": { "command": "parley", "args": ["mcp"] }
+  }
+}
+```
+
+For Claude Code, one command installs the bundled agent skill into
+`~/.claude/skills` — the skill teaches the agent the tool set, pacing and
+guardrails:
+
+```bash
+parley skill install
+```
+
+Exposed tools: `status`, `list_chats`, `read_messages`, `send_message`,
+`reply_message`, `react_message`, `schedule_message`, `list_schedules`,
+`cancel_schedule`, `run_due_schedules`. Everything stays on `127.0.0.1` and
+runs through the same paced, verified session as the CLI.
+
 ## Reliability, with receipts
 
 Automating a store you don't own is only as good as the verifier. parley treats
@@ -262,6 +313,10 @@ uv run parley --demo chats
 
 Issues, PRs and *"it works on this build"* reports are all gold. Read
 [CONTRIBUTING](CONTRIBUTING.md) and the [code of conduct](CODE_OF_CONDUCT.md) first.
+
+## Contributors
+
+- **Sachitt** ([@Sachitt-AV-08](https://github.com/Sachitt-AV-08)) — creator, maintainer
 
 ## License
 
