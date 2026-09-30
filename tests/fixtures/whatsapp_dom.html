@@ -1,0 +1,76 @@
+<!-- WhatsApp Web DOM fixture for selector-rot tests.
+     This file represents a snapshot of the key DOM elements that parley's
+     DOM fallback selectors target. When WhatsApp changes their DOM, update
+     this fixture and the test will fail until selectors are fixed. -->
+
+<!DOCTYPE html>
+<html>
+<head><title>WhatsApp</title></head>
+<body>
+  <!-- Main app container -->
+  <div id="app">
+    <!-- Side pane with chat list -->
+    <div id="pane-side" role="navigation" aria-label="Chat list">
+      <!-- Search bar -->
+      <div data-testid="chat-list-search-container">
+        <input role="textbox" aria-label="Search" data-testid="chat-list-search-input" placeholder="Search contacts" />
+      </div>
+
+      <!-- Chat list -->
+      <div data-testid="chat-list">
+        <div role="list" id="chat-list-items">
+          <div role="listitem" data-id="15551234567@c.us" class="chat-row">
+            <span dir="auto">Ava</span>
+            <span>Last message preview</span>
+          </div>
+          <div role="listitem" data-id="15559876543@c.us" class="chat-row">
+            <span dir="auto">Omar</span>
+            <span>Another message</span>
+          </div>
+          <div role="listitem" data-id="f4c3b3a1c62a49e2b8001@c.us" class="chat-row">
+            <span dir="auto">Design Sync</span>
+            <span>Group message</span>
+          </div>
+          <div role="listitem" data-id="e9f0a9c8d711b4a2b8002@g.us" class="chat-row">
+            <span dir="auto">Weekend Hikers</span>
+            <span>Group message</span>
+          </div>
+          <button role="button" data-testid="chat-list-more">More</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main conversation panel -->
+    <div id="main">
+      <!-- Conversation header -->
+      <header data-testid="conversation-header">
+        <span dir="auto">Ava</span>
+        <div data-testid="conversation-title">Ava</div>
+      </header>
+
+      <!-- Conversation messages -->
+      <div data-testid="conversation-panel-messages">
+        <div class="message-in">
+          <div data-pre-plain-text="[09:30 AM, 1/1/2025] Ava: ">Hello!</div>
+          <div class="copyable-text">Hello!</div>
+        </div>
+        <div class="message-out">
+          <div data-pre-plain-text="[09:31 AM, 1/1/2025] You: ">Hi!</div>
+          <div class="copyable-text">Hi!</div>
+        </div>
+      </div>
+
+      <!-- Compose box -->
+      <div data-testid="conversation-compose-box-input" role="textbox" contenteditable="true"></div>
+    </div>
+  </div>
+
+  <!-- QR code (shown when not logged in) -->
+  <canvas aria-label="Scan this QR code to link your device" data-testid="qr-code" style="display: none;"></canvas>
+
+  <!-- QR code overlay when logged out -->
+  <div data-testid="qr-overlay" style="display: none;">
+    <canvas aria-label="Scan this QR code to link your device"></canvas>
+  </div>
+</body>
+</html>
