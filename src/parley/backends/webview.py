@@ -234,29 +234,24 @@ class WebViewBackend:
 
         This is the version-tolerant path: it needs no store internals and
         works on any installed WhatsApp Desktop build. The user literally sees
-        parley type. The conversation is *verified* to be the target chat
-        before any text is typed.
+        parley type. Correctness is enforced twice: the conversation is
+        *verified* to be the target chat before any text is typed, and the sent
+        text is *confirmed* in the conversation after Enter.
         """
         page = self._page
         name = getattr(outbox, "name", "") or ""
-        needle = self._dom_needle(outbox.chat, name)
-        digits = "".join(ch for ch in needle if ch.isdigit())
-        token = digits[-10:]
+        token = self._chat_token(outbox.chat)
         nl = name.lower()
 
         current = self._conv_title()
-        if not (current and ((token and token in self._norm(current)) or (nl and nl in current.lower()))):
-            opened_title = self._dom_open_chat(needle, expected_title=name)
+        if not (current and self._title_matches(current, token, nl)):
+            opened_title = self._dom_open_chat(outbox.chat, name=name)
             if not opened_title:
                 raise ProtocolError(
-                    f"could not open a chat for {outbox.chat} in the UI (no change in header after search)"
+                    f"could not open a chat for {outbox.chat} in the UI "
+                    "(no search result matched, no header change)"
                 )
-            verified = (
-                (token and token in self._norm(opened_title))
-                or (nl and nl in opened_title.lower())
-                or (outbox.chat and outbox.chat.split("@")[0] in self._norm(opened_title))
-            )
-            if not verified:
+            if not self._title_matches(opened_title, token, nl):
                 raise ProtocolError(
                     f"search opened the wrong chat - header reads {opened_title!r}; "
                     "aborting before anything was typed"
@@ -268,8 +263,12 @@ class WebViewBackend:
         compose.click()
         self._page.keyboard.type(outbox.text, delay=15)
         self._page.keyboard.press("Enter")
-        # give WhatsApp a beat to hand the message off
-        self._page.wait_for_timeout(2500)
+        # hand the message off, then confirm it visibly landed
+        if not self._confirm_sent_text(outbox.text, timeout_s=8.0):
+            raise ProtocolError(
+                f"Enter was pressed for {outbox.chat} but the text was not confirmed "
+                "in the conversation; nothing re-sent automatically"
+            )
         return Message(id=f"dom-{outbox.chat}", chat=outbox.chat, author="me", text=outbox.text, from_me=True)
 
     _SEARCH_SEL = (
@@ -286,13 +285,33 @@ class WebViewBackend:
     )
 
     @staticmethod
-    def _dom_needle(chat_id: str, name: str = "") -> str:
-        digits = "".join(ch for ch in chat_id.split("@")[0] if ch.isdigit())
-        return name[:40] or digits[-10:] or digits
+    def _chat_token(chat_id: str) -> str:
+        """The last-10 digits of a chat id — the stable piece that always
+        appears in a contact/group row title."""
+        digits = "".join(ch for ch in (chat_id or "").split("@")[0] if ch.isdigit())
+        return digits[-10:]
+
+    def _search_needles(self, chat_id: str, name: str = "") -> list[str]:
+        """Ordered search-box strings to try. Names are what WhatsApp indexes
+        for friends and groups; some chats (e.g. your own number) render as the
+        bare number, so digits are always tried as a fallback."""
+        needles = []
+        if name:
+            needles.append(name[:40])
+        digits = "".join(ch for ch in (chat_id or "").split("@")[0] if ch.isdigit())
+        if digits and digits[-10:] != (needles[0] if needles else None):
+            needles.append(digits[-10:])
+        return needles or [chat_id]
 
     @staticmethod
     def _norm(s: str) -> str:
         return (s or "").replace(" ", "").strip().lower()
+
+    def _title_matches(self, title: str, token: str, name_lower: str = "") -> bool:
+        if not title:
+            return False
+        t = self._norm(title)
+        return bool(token and token in t) or bool(name_lower and name_lower in title.lower())
 
     def _conv_title(self) -> str:
         try:
@@ -334,7 +353,7 @@ class WebViewBackend:
         )
         return rows or []
 
-    def _wait_search_title(self, token: str, expected: str = "", timeout_s: float = 12.0) -> str | None:
+    def _wait_search_title(self, token: str, expected: str = "", timeout_s: float = 3.0) -> str | None:
         """Poll until a matching search-result row appears; return its title."""
         import time
 
@@ -344,7 +363,7 @@ class WebViewBackend:
             rows = self._scan_for_title(token, expected)
             if rows:
                 return rows[0]["title"]
-            page.wait_for_timeout(500)
+            page.wait_for_timeout(250)
         return None
 
     def _click_matching_row(self, token: str, expected: str = "") -> bool:
@@ -353,52 +372,86 @@ class WebViewBackend:
             return False
         try:
             self._page.locator('#pane-side [role="row"], #pane-side [role="button"]').nth(rows[0]["index"]).click(
-                timeout=8000
+                timeout=6000
             )
             return True
         except Exception:
             return False
 
-    def _dom_open_chat(self, needle: str, expected_title: str = "") -> str | None:
-        """Search, click the result row whose *title* matches, and confirm the
-        conversation header switched there. Returns new header title or None.
+    def _dom_open_chat(self, chat_id: str, name: str = "") -> str | None:
+        """Search (name then digits), click the result row whose *title*
+        matches, and confirm the conversation header is our target. Returns the
+        new header title, or None if nothing matched.
 
         WhatsApp renders search two ways: inline (when a chat is already open,
         the list + header stay) or as a full-screen overlay (when no chat is
         open, ``#main`` is replaced). Both are handled. Anything short of a
-        confirmed conversation switch aborts - callers must not type.
+        confirmed, title-checked conversation switch aborts - callers must not
+        type on an unverified chat.
         """
         page = self._page
-        digits = "".join(ch for ch in needle if ch.isdigit())
-        token = digits[-10:]
+        token = self._chat_token(chat_id)
         before = self._conv_title()
         field = page.locator(self._SEARCH_SEL).first
         field.click()
-        page.wait_for_timeout(500)
-        page.keyboard.type(needle, delay=12)
-        if not self._wait_search_title(token, expected=expected_title):
-            try:
-                page.keyboard.press("Escape")
-            except Exception:
-                pass
-            return None
-        clicked = self._click_matching_row(token, expected_title)
-        # NOTE: do NOT press Escape here. WhatsApp Desktop treats Escape after
-        # opening a chat as "go back", which closes the just-opened conversation.
+        page.wait_for_timeout(300)
+        for needle in self._search_needles(chat_id, name):
+            page.keyboard.press("Control+A")
+            page.keyboard.press("Backspace")
+            page.wait_for_timeout(150)
+            page.keyboard.type(needle, delay=10)
+            if not self._wait_search_title(token, expected=name):
+                continue
+            if not self._click_matching_row(token, expected=name):
+                continue
+            # NOTE: do NOT press Escape here. WhatsApp Desktop treats Escape
+            # after opening a chat as "go back", closing the just-opened one.
+            import time
+
+            end = time.monotonic() + 3.5
+            after = ""
+            while time.monotonic() < end:
+                after = self._conv_title()
+                if after and (self._title_matches(after, token, name.lower()) or not before):
+                    break
+                page.wait_for_timeout(200)
+            if after and self._title_matches(after, token, name.lower()):
+                return after
+        # Nothing matched and we never clicked a row, so Escape is safe here:
+        # it only clears the search overlay / opens the last conversation. It is
+        # NOT safe after a successful click (Escape would close the chat).
+        try:
+            page.keyboard.press("Escape")
+        except Exception:
+            pass
+        return None
+
+    def _confirm_sent_text(self, text: str, timeout_s: float = 8.0) -> bool:
+        """Poll the open conversation until the sent text visibly appears."""
         import time
 
-        end = time.monotonic() + 6.0
-        after = ""
+        page = self._page
+        want = self._norm(text)
+        end = time.monotonic() + timeout_s
         while time.monotonic() < end:
-            after = self._conv_title()
-            if after and (not before or self._norm(after) != self._norm(before)):
-                break
-            page.wait_for_timeout(400)
-        if not clicked or not after:
-            return None
-        if not after or (before and self._norm(after) == self._norm(before)):
-            return None
-        return after
+            hits = page.evaluate(
+                """(want) => {
+                  const norm = (s) => (s || "").replace(/\\s+/g, "").toLowerCase();
+                  const bubbles = document.querySelectorAll(
+                    '#main [data-pre-plain-text], #main [data-testid="conversation-panel-messages"] .copyable-text'
+                  );
+                  for (const b of bubbles) {
+                    const candidate = b.getAttribute('data-pre-plain-text') || b.innerText || "";
+                    if (candidate && norm(candidate).includes(want)) return true;
+                  }
+                  return false;
+                }""",
+                want,
+            )
+            if hits:
+                return True
+            page.wait_for_timeout(600)
+        return False
 
     def react(self, message_id: str, emoji: str | None) -> Message:
         self._require_page_logged_in()
