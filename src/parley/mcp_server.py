@@ -119,7 +119,7 @@ def tool_list_schedules(scheduler: Scheduler) -> dict:
 def tool_cancel_schedule(scheduler: Scheduler, entry_id: str) -> dict:
     """Remove a queued message by its schedule id."""
     removed = scheduler.remove(entry_id)
-    return {"ok": removed, "removed": removed, "id": entry_id}
+    return {"ok": True, "removed": removed, "id": entry_id}
 
 
 def tool_run_due_schedules(scheduler: Scheduler) -> dict:

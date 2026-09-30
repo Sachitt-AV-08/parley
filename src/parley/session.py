@@ -140,11 +140,18 @@ class Session:
             )
         return found.id, found.name
 
-    def find_message(self, message_id: str) -> Message | None:
-        prefix = message_id.split(":")[0]
-        for chat in self.chats(limit=50):
-            for m in self.messages(chat.id, limit=200):
-                if m.id == message_id or m.id.startswith(f"{prefix}:"):
+    def find_message(self, message_id: str, chat_limit: int = 200) -> Message | None:
+        """Locate a message by id — exact, or by id / chat/seq prefix.
+
+        Walks the most recent chats (newest first) and reads a deep window of
+        each so `reply` and `react` work on older messages too, not just the
+        last screenful.
+        """
+        mid = message_id.strip()
+        prefix = mid.split(":")[0]
+        for chat in self.chats(limit=chat_limit):
+            for m in self.messages(chat.id, limit=300):
+                if m.id in (mid, prefix) or m.id.startswith(f"{prefix}:") or mid.startswith(m.id.split(":")[0]):
                     return m
         return None
 
