@@ -73,7 +73,7 @@ def _open_session(args, *, write: bool) -> None:
             window_seconds=getattr(args, "window_seconds", None) or 60,
             window_budget=getattr(args, "window_budget", None) or 18,
         )
-    return Session(demo=args.demo, pacing=pacing)
+    return Session(demo=args.demo, pacing=pacing, port=args.port)
 
 
 def _render_chat_table(chats) -> str:
@@ -189,12 +189,12 @@ def cmd_contacts(args) -> int:
 def cmd_chat(args) -> int:
     session = _open_session(args, write=False)
     try:
-        chat_id = session._resolve_chat_id(args.chat)
+        chat_id, name = session.resolve_recipient(args.chat)
         msgs = session.messages(chat_id, limit=args.limit)
         if args.json:
             out([m.__dict__ if hasattr(m, "__dict__") else _jsonable(m) for m in msgs], True)
         else:
-            print(f"# {args.chat}  ({len(msgs)} shown, oldest last)")
+            print(f"# {name or args.chat}  ({len(msgs)} shown, oldest last)")
             print(_render_message_table(msgs))
         return 0
     finally:
@@ -317,7 +317,7 @@ def asdict_entry(e) -> dict:
 def cmd_server(args) -> int:
     from .server import serve
 
-    serve(host=args.host, port=args.port, demo=args.demo, token=args.token)
+    serve(host=args.host, port=args.http_port, demo=args.demo, token=args.token, cdp_port=args.port)
     return 0
 
 
@@ -328,7 +328,7 @@ def cmd_tui(args) -> int:
     except ImportError:  # pragma: no cover
         print("the TUI needs `textual`:  pip install 'parley-wa[tui]'", file=sys.stderr)
         return 2
-    run_tui(demo=args.demo)
+    run_tui(demo=args.demo, port=args.port)
     return 0
 
 

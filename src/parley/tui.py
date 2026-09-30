@@ -14,7 +14,10 @@ from .session import Session
 TAB = "    "
 
 
-def run(demo: bool | None = None) -> None:
+def run(demo: bool | None = None, port: int | None = None) -> None:
+    from .backends.webview import DEFAULT_PORT
+
+    session = Session(demo=demo, port=port or DEFAULT_PORT)
     try:
         from textual.app import App, ComposeResult
         from textual.binding import Binding
@@ -86,7 +89,7 @@ def run(demo: bool | None = None) -> None:
             except Exception as exc:  # noqa: BLE001
                 self.notify(str(exc), severity="error")
 
-    ParleyApp(Session(demo=demo)).run()
+    ParleyApp(session).run()
 
 
 if __name__ == "__main__":

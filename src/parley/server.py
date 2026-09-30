@@ -180,10 +180,12 @@ def serve(
     demo: bool | None = None,
     token: str | None = None,
     poll: float = 1.0,
+    cdp_port: int | None = None,
 ) -> None:
+    from .backends.webview import DEFAULT_PORT
     from .scheduler import Scheduler, SchedulerThread
 
-    session = Session(demo=demo)
+    session = Session(demo=demo, port=cdp_port or DEFAULT_PORT)
     scheduler = Scheduler(session=session)
     thread = SchedulerThread(scheduler, interval=poll)
     thread.start()
@@ -212,4 +214,4 @@ if __name__ == "__main__":
     parser.add_argument("--demo", action="store_true")
     parser.add_argument("--token", default=None)
     args = parser.parse_args()
-    serve(host=args.host, port=args.port, demo=args.demo, token=args.token)
+    serve(host=args.host, http_port=args.port, demo=args.demo, token=args.token)
