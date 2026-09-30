@@ -4,15 +4,18 @@ All notable changes to parley are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 does its best to adhere to [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [0.3.0] - 2026-09-30
 
-- PyPI distribution as `parley-wa` (console command and import stay `parley`).
+### Added
 - **MCP server** (`parley mcp`): a stdio Model Context Protocol server so AI
   agents (Claude, Cursor, Copilot, any MCP client) can list chats, read
   messages, send, reply, react and schedule on the user's real WhatsApp —
   works against `mcp>=2` and the classic `mcp<2` FastMCP API.
 - **Agent skill** (`parley skill install`): installs the bundled Claude Code
   skill into `~/.claude/skills` in one command.
+- **One-command installer**: `install.ps1` / `install.sh` — detects
+  `uv` → `pipx` → `pip`, installs the release, enables the debug port and
+  prints next steps.
 - `mcp` optional dependency (`pip install 'parley-wa[mcp]'`) plus `mcp` in the
   `dev` extra for CI; wheel ships the skill data.
 

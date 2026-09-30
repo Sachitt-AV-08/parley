@@ -15,7 +15,7 @@ two buckets:
 
 - **A bug in parley** (e.g. the HTTP server leaking data, a CDP handshake
   weakness, a path traversal in the scheduler store). Please open a private
-  issue, or email `sachitt.av@gmail.com` with a subject starting with
+  issue, or email `sachittav@gmail.com` with a subject starting with
   `[SECURITY]`, and include the reproduction.
 
 - **Behaviour of WhatsApp itself** (store internals, DOM selectors, the WebView2

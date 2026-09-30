@@ -14,7 +14,7 @@ Design points:
 
 Try it::
 
-    python -m pip install https://github.com/Sachitt-AV-08/parley/releases/download/v0.2.0/parley_wa-0.2.0-py3-none-any.whl
+    curl -fsSL https://raw.githubusercontent.com/Sachitt-AV-08/parley/main/install.sh | sh   # or the PowerShell one-liner in the README
     parley setup        # enable the local WebView2 debugging port
     parley status       # confirm the desktop app is attached
     parley chats        # list recent conversations
@@ -33,7 +33,7 @@ from .models import Chat, Contact, Message, OutboxMessage
 from .pacing import HumanPacing
 from .session import Session, parley_connect
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "Chat",

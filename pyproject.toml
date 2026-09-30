@@ -1,11 +1,11 @@
 [project]
 name = "parley-wa"
-version = "0.2.0"
+version = "0.3.0"
 description = "Drive your installed WhatsApp Desktop locally — read, send, reply and react — no cloud, no QR, no Composio."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "Sachitt", email = "sachitt.av@gmail.com" }]
+authors = [{ name = "Sachitt", email = "sachittav@gmail.com" }]
 keywords = ["whatsapp", "chatbot", "automation", "cdp", "webview2", "local", "privacy"]
 classifiers = [
   "Development Status :: 3 - Alpha",
