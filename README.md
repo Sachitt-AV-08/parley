@@ -67,9 +67,13 @@ build a bot tonight and add your real account whenever you're ready.
 ## Install
 
 ```bash
-pip install parley           # or: uv tool install parley
-pip install 'parley[tui]'    # optional terminal UI
+pip install https://github.com/Sachitt-AV-08/parley/releases/download/v0.2.0/parley_wa-0.2.0-py3-none-any.whl
+# coming to PyPI as `parley-wa`; `uv tool install` also works from the URL
+pip install 'parley-wa[tui]'    # optional terminal UI (once on PyPI)
 ```
+
+The interactive `parley` command and the `parley` Python import both stay the
+same no matter the distribution name.
 
 Then enable the local debugging port and restart WhatsApp Desktop once:
 
