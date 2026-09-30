@@ -23,10 +23,12 @@ dependencies = [
 
 [project.optional-dependencies]
 tui = ["textual>=0.50"]
+mcp = ["mcp>=1.2"]
 dev = [
   "pytest>=7.4",
   "pytest-cov>=4.1",
   "ruff>=0.6",
+  "mcp>=1.2",
 ]
 
 [project.scripts]
@@ -43,7 +45,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/parley"]
-include = ["src/parley/py.typed"]
+include = ["src/parley/py.typed", "src/parley/skills/**"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
