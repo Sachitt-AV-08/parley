@@ -1,64 +1,90 @@
-#!/usr/bin/env sh
-# parley installer — macOS / Linux
-# Run it directly from the README one-liner:
-#   curl -fsSL https://raw.githubusercontent.com/Sachitt-AV-08/parley/main/install.sh | sh
-#
-# Installs parley, enables the local debugging port, and prints next steps.
-# On this platform setup only exports the (per-user) env var that opens the
-# WebView2/Chrome debug port — undo with `parley setup --undo`.
+#!/usr/bin/env bash
+# Parley installer - installs Parley CLI with MCP support
+# Detects uv/pipx/pip and uses the best available installer
 
-set -e
+set -euo pipefail
 
-REPO="https://github.com/Sachitt-AV-08/parley"
-RELEASE="${PARLEY_RELEASE:-v0.3.0}"
-WHL="$REPO/releases/download/$RELEASE/parley_wa-${RELEASE#v}-py3-none-any.whl"
+# Colors
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
 
-printf '\n  \033[1;36mparley installer\033[0m\n'
-printf '  source : %s\n' "$REPO"
-printf '  release: %s\n\n' "$RELEASE"
-printf '  Note: WhatsApp for Web/Destop debugging here needs Chromium flags;\n'
-printf '  parley setup will do its best, and parley doctor will tell you the truth.\n\n'
+VERSION="${1:-latest}"
+FORCE=false
+NO_MCP=false
 
-# 1) install ----------------------------------------------------------------
-install_with_uv() {
-    printf '\033[1;32m[1/3] installing with uv ...\033[0m\n'
-    uv tool install --force "$WHL"
-}
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --force) FORCE=true; shift ;;
+        --no-mcp) NO_MCP=true; shift ;;
+        -*) echo "Unknown option: $1"; exit 1 ;;
+        *) VERSION="$1"; shift ;;
+    esac
+done
 
-install_with_pip() {
-    printf '\033[1;32m[1/3] installing with pip ...\033[0m\n'
-    command -v python3 >/dev/null 2>&1 || { echo "no python3 found"; exit 1; }
-    python3 -m pip install --user --upgrade "$WHL"
-    export PATH="$PATH:$HOME/.local/bin"
-}
+echo -e "${CYAN}╔══════════════════════════════════════════╗${NC}"
+echo -e "${CYAN}║     Parley Installer                     ║${NC}"
+echo -e "${CYAN}║   Drive your WhatsApp Desktop            ║${NC}"
+echo -e "${CYAN}╚══════════════════════════════════════════╝${NC}"
+echo ""
 
-if command -v uv >/dev/null 2>&1; then
-    install_with_uv
-elif command -v pipx >/dev/null 2>&1; then
-    install_with_pip
+# Get latest version if not specified
+if [[ "$VERSION" == "latest" ]]; then
+    echo -e "${YELLOW}Fetching latest release...${NC}"
+    VERSION=$(curl -s https://api.github.com/repos/Sachitt-AV-08/parley/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+    if [[ -z "$VERSION" ]]; then
+        echo -e "${RED}Failed to fetch latest release, using v0.3.0${NC}"
+        VERSION="v0.3.0"
+    fi
+fi
+
+echo -e "${CYAN}Target version: ${VERSION}${NC}"
+echo ""
+
+# Detect installer
+if command -v uv &> /dev/null; then
+    echo -e "${GREEN}Found uv - using uv tool install${NC}"
+    if [[ "$NO_MCP" == true ]]; then
+        uv tool install "parley-wa@${VERSION}"
+    else
+        uv tool install "parley-wa[mcp]@${VERSION}"
+    fi
+elif command -v pipx &> /dev/null; then
+    echo -e "${GREEN}Found pipx - using pipx install${NC}"
+    if [[ "$NO_MCP" == true ]]; then
+        pipx install "parley-wa==${VERSION#v}"
+    else
+        pipx install "parley-wa[mcp]==${VERSION#v}"
+    fi
+elif command -v pip &> /dev/null; then
+    echo -e "${GREEN}Found pip - using pip install${NC}"
+    WHEEL_URL="https://github.com/Sachitt-AV-08/parley/releases/download/${VERSION}/parley_wa-${VERSION#v}-py3-none-any.whl"
+    if [[ "$NO_MCP" == true ]]; then
+        pip install "$WHEEL_URL"
+    else
+        pip install "$WHEEL_URL[mcp]"
+    fi
 else
-    install_with_pip
+    echo -e "${RED}No installer found (uv/pipx/pip). Please install Python first.${NC}"
+    exit 1
 fi
 
-# 2) enable the port (best-effort, but honest) ------------------------------
-if [ "${PARLEY_NOSETUP:-0}" != "1" ]; then
-    printf '\033[1;32m[2/3] enabling the local debugging port ...\033[0m\n'
-    parley setup || echo "setup could not self-configure here — run  parley doctor  to see why."
-    printf '\n    restart the app once after this.\n\n'
-fi
-
-# 3) verify -----------------------------------------------------------------
-printf '\033[1;32m[3/3] verifying ...\033[0m\n'
-parley --version
-if parley --demo status >/dev/null 2>&1; then
-    printf '\033[1;32m   simulator: OK\033[0m\n'
-else
-    printf '\033[1;31m   simulator check failed\033[0m\n'
-fi
-
-printf '\n  \033[1;36mNext:\033[0m\n'
-printf '  1. parley doctor\n'
-printf "  2. parley send --to <name> --text 'hi'\n"
-printf "  3. agents: pip install 'parley-wa[mcp]'  &&  parley mcp\n"
-printf '     parley skill install          # Claude Code skill\n'
-printf '  more: %s#readme\n\n' "$REPO"
+echo ""
+echo -e "${GREEN}✓ Parley installed successfully!${NC}"
+echo ""
+echo -e "${CYAN}Quick start:${NC}"
+echo "  parley setup              # Enable WhatsApp debugging port"
+echo "  parley doctor             # Verify connection"
+echo "  parley send --to Ava --text \"hi\""
+echo "  parley serve              # HTTP API at :8300"
+echo ""
+echo -e "${CYAN}MCP config (Claude Desktop / Cursor / Copilot):${NC}"
+cat << 'EOF'
+{
+  "mcpServers": {
+    "parley": { "command": "parley", "args": ["mcp"], "type": "stdio" }
+  }
+}
+EOF

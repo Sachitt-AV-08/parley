@@ -1,73 +1,112 @@
-# parley installer — Windows (PowerShell)
-# Run it directly from the README one-liner:
-#   irm https://raw.githubusercontent.com/Sachitt-AV-08/parley/main/install.ps1 | iex
-#
-# It installs parley, enables the local debugging port, and prints the two
-# commands you actually need next. Everything can be undone with
-# `parley setup --undo`.
+<#>
+.SYNOPSIS
+    Parley installer - installs Parley CLI with MCP support
+.DESCRIPTION
+    Downloads the latest Parley release wheel from GitHub and installs it.
+    Detects uv/pipx/pip and uses the best available installer.
+#>
 
 param(
-    [string]$Release = "",          # default: latest release version below
-    [switch]$NoSetup                # skip enabling the WebView2 debug port
+    [string]$Version = "latest",
+    [switch]$Force,
+    [switch]$NoMcp
 )
 
 $ErrorActionPreference = "Stop"
-$Repo   = "https://github.com/Sachitt-AV-08/parley"
-if (-not $Release) { $Release = "v0.3.0" }
-$WhlUrl = "$Repo/releases/download/$Release/parley_wa-$($Release.TrimStart('v'))-py3-none-any.whl"
 
-Write-Host ""
-Write-Host "  parley installer" -ForegroundColor Cyan
-Write-Host "  -----------------"
-Write-Host "  source : $Repo"
-Write-Host "  release: $Release"
-Write-Host ""
+# Colors
+$Green  = [ConsoleColor]::Green
+$Yellow = [ConsoleColor]::Yellow
+$Red    = [ConsoleColor]::Red
+$Cyan   = [ConsoleColor]::Cyan
 
-function Install-WithUv {
-    Write-Host "[1/3] installing with uv ..." -ForegroundColor Green
-    uv tool install --force $WhlUrl
-    return $true
+function Write-Color($msg, $color) {
+    $orig = $Host.UI.RawUI.ForegroundColor
+    $Host.UI.RawUI.ForegroundColor = $color
+    Write-Host $msg
+    $Host.UI.RawUI.ForegroundColor = $orig
 }
 
-function Install-WithPip {
-    Write-Host "[1/3] installing with pip ..." -ForegroundColor Green
-    $py = (Get-Command python -ErrorAction SilentlyContinue).Source
-    if (-not $py) { $py = (Get-Command py -ErrorAction SilentlyContinue).Source }
-    if (-not $py) { throw "no Python found — install Python 3.10+ from python.org, or install uv (https://docs.astral.sh/uv/)" }
-    & ($py) -m pip install --upgrade $WhlUrl
-    return $lastExitCode -eq 0
+function Get-LatestRelease {
+    $api = "https://api.github.com/repos/Sachitt-AV-08/parley/releases/latest"
+    try {
+        $resp = Invoke-RestMethod -Uri $api -Headers @{ "Accept" = "application/vnd.github.v3+json" }
+        return $resp.tag_name
+    } catch {
+        Write-Color "Failed to fetch latest release: $($_.Exception.Message)" $Red
+        return "v0.3.0"
+    }
 }
 
-# ------------------------------------------------------------------ install
-$ok = $false
-if (Get-Command uv -ErrorAction SilentlyContinue) { $ok = Install-WithUv }
-elseif (Get-Command pipx -ErrorAction SilentlyContinue) { $ok = Install-WithPip }
-else { $ok = Install-WithPip }
-
-if (-not $ok) { throw "install failed" }
-
-# ---------------------------------------------------------------- the port
-if (-not $NoSetup) {
-    Write-Host "[2/3] enabling the local debugging port ..." -ForegroundColor Green
-    parley setup
-    Write-Host ""
-    Write-Host "    WhatsApp must be fully closed and restarted once." -ForegroundColor Yellow
-    Write-Host "    (undo anytime with:  parley setup --undo)" -ForegroundColor DarkGray
-    Write-Host ""
+function Get-WheelUrl($tag) {
+    $api = "https://api.github.com/repos/Sachitt-AV-08/parley/releases/tags/$tag"
+    try {
+        $resp = Invoke-RestMethod -Uri $api -Headers @{ "Accept" = "application/vnd.github.v3+json" }
+        $wheel = $resp.assets | Where-Object { $_.name -like "*.whl" } | Select-Object -First 1
+        if ($wheel) { return $wheel.browser_download_url }
+    } catch { }
+    $version = $tag.TrimStart('v')
+    return "https://github.com/Sachitt-AV-08/parley/releases/download/$tag/parley_wa-$version-py3-none-any.whl"
 }
 
-# ------------------------------------------------------------------- verify
-Write-Host "[3/3] verifying ..." -ForegroundColor Green
-$ver = parley --version
-try { parley --demo status | Out-Null; Write-Host "   simulator: OK  ($ver)" -ForegroundColor Green }
-catch { Write-Host "   simulator check failed: $_" -ForegroundColor Red }
+Write-Color "╔══════════════════════════════════════════╗" $Cyan
+Write-Color "║     Parley Installer                     ║" $Cyan
+Write-Color "║   Drive your WhatsApp Desktop            ║" $Cyan
+Write-Color "╚══════════════════════════════════════════╝" $Cyan
+Write-Host ""
+
+if ($Version -eq "latest") {
+    Write-Color "Fetching latest release..." $Yellow
+    $Version = Get-LatestRelease
+}
+Write-Color "Target version: $Version" $Cyan
+
+$hasUv    = (Get-Command uv -ErrorAction SilentlyContinue) -ne $null
+$hasPipx  = (Get-Command pipx -ErrorAction SilentlyContinue) -ne $null
+$hasPip   = (Get-Command pip -ErrorAction SilentlyContinue) -ne $null
+
+if ($hasUv) {
+    Write-Color "Found uv - using uv tool install" $Green
+    $installCmd = "uv tool install"
+    if ($NoMcp) { $installCmd += " 'parley-wa'" } else { $installCmd += " 'parley-wa[mcp]'" }
+    if ($Version -ne "latest") { $installCmd += "@$Version" }
+    Write-Color "Running: $installCmd" $Cyan
+    & $installCmd
+} elseif ($hasPipx) {
+    Write-Color "Found pipx - using pipx install" $Green
+    $installCmd = "pipx install"
+    if ($NoMcp) { $installCmd += " parley-wa" } else { $installCmd += " 'parley-wa[mcp]'" }
+    if ($Version -ne "latest") { $installCmd += "==$($Version.TrimStart('v'))" }
+    Write-Color "Running: $installCmd" $Cyan
+    & $installCmd
+} elseif ($hasPip) {
+    Write-Color "Found pip - using pip install" $Green
+    $wheelUrl = Get-WheelUrl $Version
+    Write-Color "Downloading wheel: $wheelUrl" $Cyan
+    $installCmd = "pip install"
+    if (-not $NoMcp) { $installCmd += " 'parley-wa[mcp]'" } else { $installCmd += " parley-wa" }
+    $installCmd += " $wheelUrl"
+    Write-Color "Running: $installCmd" $Cyan
+    & $installCmd
+} else {
+    Write-Color "No installer found (uv/pipx/pip). Please install Python first." $Red
+    exit 1
+}
 
 Write-Host ""
-Write-Host "  Next:" -ForegroundColor Cyan
-if (-not $NoSetup) { Write-Host "  1. restart WhatsApp Desktop (fully quit, reopen, log in)" }
-Write-Host "  2. parley doctor        # confirm it can attach"
-Write-Host "  3. parley send --to <name> --text 'hi'   # send for real"
-Write-Host "  agents: pip install 'parley-wa[mcp]'  &&  parley mcp"
-Write-Host "          parley skill install          # Claude Code skill"
-Write-Host "  more:  https://github.com/Sachitt-AV-08/parley#readme"
+Write-Color "✓ Parley installed successfully!" $Green
 Write-Host ""
+Write-Color "Quick start:" $Cyan
+Write-Host "  parley setup              # Enable WhatsApp debugging port"
+Write-Host "  parley doctor             # Verify connection"
+Write-Host "  parley send --to Ava --text \"hi\""
+Write-Host "  parley serve               # HTTP API at :8300"
+Write-Host ""
+Write-Color "MCP config (Claude Desktop / Cursor / Copilot):" $Cyan
+Write-Host @"
+{
+  "mcpServers": {
+    "parley": { "command": "parley", "args": ["mcp"], "type": "stdio" }
+  }
+}
+"@
