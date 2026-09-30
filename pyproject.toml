@@ -1,0 +1,59 @@
+[project]
+name = "parley"
+version = "0.2.0"
+description = "Drive your installed WhatsApp Desktop locally — read, send, reply and react — no cloud, no QR, no Composio."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Sachitt", email = "sachitt.av@gmail.com" }]
+keywords = ["whatsapp", "chatbot", "automation", "cdp", "webview2", "local", "privacy"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3",
+  "Topic :: Communications :: Chat",
+  "Topic :: Software Development",
+]
+dependencies = [
+  "playwright>=1.40",
+]
+
+[project.optional-dependencies]
+tui = ["textual>=0.50"]
+dev = [
+  "pytest>=7.4",
+  "pytest-cov>=4.1",
+  "ruff>=0.6",
+]
+
+[project.scripts]
+parley = "parley.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Sachitt-AV-08/parley"
+Source = "https://github.com/Sachitt-AV-08/parley"
+Issues = "https://github.com/Sachitt-AV-08/parley/issues"
+
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/parley"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/parley/store/script.py" = ["E501"]
