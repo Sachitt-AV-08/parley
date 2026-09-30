@@ -93,7 +93,8 @@ def test_bind_hides_injected_args():
         return {"ok": True, "to": to}
 
     bound = _bind(_fake, session=object(), scheduler=None)
-    assert list(bound.__code__.co_varnames) == ["to", "text"]
+    names = list(bound.__code__.co_varnames)
+    assert "session" not in names and "scheduler" not in names
     assert bound(to="x", text="y") == {"ok": True, "to": "x"}
 
 
@@ -104,7 +105,7 @@ def test_server_exposes_tools_and_calls(session):
     from parley.mcp_server import build_mcp
 
     async def run():
-        server = build_mcp(session)
+        server = build_mcp(session, allow_send=True)
         tools = await server.list_tools()
         names = [t.name for t in tools]
         assert "send_message" in names
@@ -113,6 +114,55 @@ def test_server_exposes_tools_and_calls(session):
         res = await server.call_tool("send_message", {"to": "Ava", "text": "mcp wire test"})
         text = res.content[0].text
         assert json.loads(text)["ok"] is True
+
+    asyncio.run(run())
+
+
+@pytest.mark.skipif(not _MCP_AVAILABLE, reason="mcp SDK not installed")
+def test_server_read_only_by_default(session):
+    import asyncio
+
+    from parley.mcp_server import build_mcp
+
+    async def run():
+        server = build_mcp(session)
+        names = [t.name for t in await server.list_tools()]
+        assert "read_messages" in names and "send_message" not in names
+        assert "schedule_message" not in names and "run_due_schedules" not in names
+
+    asyncio.run(run())
+
+
+@pytest.mark.skipif(not _MCP_AVAILABLE, reason="mcp SDK not installed")
+def test_allowlist_blocks_other_recipients(session):
+    import asyncio
+
+    from parley.mcp_server import build_mcp
+
+    async def run():
+        server = build_mcp(session, allow_send="Ava")
+        res = await server.call_tool("send_message", {"to": "Ava", "text": "allowed"})
+        assert json.loads(res.content[0].text)["ok"] is True
+        blocked = await server.call_tool("send_message", {"to": "Omar", "text": "no"})
+        assert json.loads(blocked.content[0].text)["ok"] is False
+        assert "not in PARLEY_ALLOW_TO" in json.loads(blocked.content[0].text)["error"]
+
+    asyncio.run(run())
+
+
+@pytest.mark.skipif(not _MCP_AVAILABLE, reason="mcp SDK not installed")
+def test_allowlist_from_env(session, monkeypatch):
+    import asyncio
+
+    from parley.mcp_server import build_mcp
+
+    monkeypatch.setenv("PARLEY_ALLOW_TO", "Ava")
+    async def run():
+        server = build_mcp(session, allow_send=True)
+        res = await server.call_tool("send_message", {"to": "Ava", "text": "ok"})
+        assert json.loads(res.content[0].text)["ok"] is True
+        blocked = await server.call_tool("send_message", {"to": "Omar", "text": "no"})
+        assert json.loads(blocked.content[0].text)["ok"] is False
 
     asyncio.run(run())
 
@@ -139,7 +189,7 @@ def test_stdio_e2e():
 
     async def go():
         params = StdioServerParameters(
-            command=sys.executable, args=["-m", "parley.cli", "--demo", "mcp"]
+            command=sys.executable, args=["-m", "parley.cli", "--demo", "mcp", "--allow-send"]
         )
         async with stdio_client(params) as (r, w):
             async with ClientSession(r, w) as s:

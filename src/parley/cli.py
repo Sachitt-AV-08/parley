@@ -346,7 +346,7 @@ def cmd_mcp(args) -> int:
     except ImportError as exc:  # pragma: no cover
         print(f"the MCP server needs the `mcp` SDK:  pip install 'parley-wa[mcp]'  ({exc})", file=sys.stderr)
         return 2
-    return run_mcp(demo=args.demo, name=args.name, port=args.port or DEFAULT_PORT)
+    return run_mcp(demo=args.demo, name=args.name, port=args.port or DEFAULT_PORT, allow_send=args.allow_send)
 
 
 def cmd_skill(args) -> int:
@@ -454,6 +454,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_mcp = sub.add_parser("mcp", help="run an MCP server so AI agents can drive WhatsApp (needs `parley[mcp]`)")
     p_mcp.add_argument("--name", default="parley", help="server name shown by MCP clients")
+    p_mcp.add_argument(
+        "--allow-send",
+        action="store_true",
+        help="expose mutating tools (send/reply/react/schedule). Default: read-only. "
+        "Restrict recipients with PARLEY_ALLOW_TO='Ava,Weekend Hikers'.",
+    )
 
     p_skill = sub.add_parser("skill", help="install the Claude Code agent skill to ~/.claude/skills")
     p_skill.add_argument("--force", action="store_true", help="overwrite an existing skill install")

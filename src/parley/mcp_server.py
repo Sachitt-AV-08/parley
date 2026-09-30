@@ -23,6 +23,7 @@ Run it with::
 from __future__ import annotations
 
 import inspect
+import os
 import sys
 from dataclasses import asdict
 
@@ -142,8 +143,64 @@ TOOL_FUNCTIONS = (
     tool_run_due_schedules,
 )
 
+# Tools that send, reply, react or touch the send queue. Hidden by default;
+# exposed only with ``--allow-send``.
+WRITE_TOOLS = frozenset(
+    {
+        tool_send_message,
+        tool_reply_message,
+        tool_react_message,
+        tool_schedule_message,
+        tool_cancel_schedule,
+        tool_run_due_schedules,
+    }
+)
 
-def _bind(fn, session, scheduler):
+
+def _recipient_allowlist(allow_send: bool | str) -> tuple[str, ...] | None:
+    """Parse the recipient allowlist.
+
+    ``allow_send=True`` reads ``PARLEY_ALLOW_TO`` (comma-separated names,
+    ids, or numbers). A string value is used directly. Returns ``None`` when
+    there is no allowlist (any recipient allowed).
+    """
+    if isinstance(allow_send, str):
+        raw = allow_send
+    elif allow_send is True:
+        raw = os.environ.get("PARLEY_ALLOW_TO", "")
+    else:
+        return None
+    return tuple(p.strip() for p in raw.split(",") if p.strip()) or None
+
+
+def _noop_guard(**_kw) -> None:
+    return None
+
+
+def _make_guard(session: Session, allowlist: tuple[str, ...]):
+    """Build a guard that blocks sends to recipients outside the allowlist.
+
+    Matching covers the raw needle (name/number as typed), the resolved chat
+    id, and the resolved display name, so ``"Ava"``, ``"15551234567"`` and
+    ``"15551234567@c.us"`` all resolve to the same decision.
+    """
+
+    def guard(**kw) -> dict | None:
+        needle = kw.get("to") or kw.get("chat")
+        if needle is None:
+            return None
+        try:
+            chat_id, name = session.resolve_recipient(str(needle))
+        except Exception as exc:  # noqa: BLE001 - surface as an MCP error dict
+            return {"ok": False, "error": f"send blocked: {needle!r} ({exc})"}
+        if str(needle) in allowlist or chat_id in allowlist or (name or "") in allowlist:
+            return None
+        return {"ok": False, "error": f"send blocked: {needle!r} is not in PARLEY_ALLOW_TO"}
+
+    return guard
+
+
+def _bind(fn, session, scheduler, guard=None):
     """Build a real named callable for ``fn`` that an MCP client can inspect.
 
     Keeps the public parameter names and defaults (schema-wise) while hiding
@@ -160,12 +217,18 @@ def _bind(fn, session, scheduler):
         else:
             parts.append(f"{p.name}={p.default!r}")
     params = ", ".join(parts)
-    src = f"def {fn.__name__}({params}):\n    return _ret(_fn, _session, _scheduler, **dict(locals()))"
+    src = (
+        f"def {fn.__name__}({params}):\n"
+        "    _g = _guard(**{k: v for k, v in locals().items() if not k.startswith('_')})\n"
+        "    return _g if _g is not None else _ret(_fn, _session, _scheduler, "
+        "**{k: v for k, v in locals().items() if not k.startswith('_')})"
+    )
     ns = {
         "_ret": lambda f, s, sc, **kw: f(s, **kw) if "session" in f.__code__.co_varnames else f(sc, **kw),
         "_fn": fn,
         "_session": session,
         "_scheduler": scheduler,
+        "_guard": guard or _noop_guard,
     }
     exec(src, ns)  # noqa: S102 - trusted, fixed input
     bound = ns[fn.__name__]
@@ -184,8 +247,14 @@ def _server_class():
         return MCPServer, "v2"
 
 
-def build_mcp(session: Session, name: str = "parley") -> object:
-    """Bind the tool functions to a fresh MCP server (requires the `mcp` SDK)."""
+def build_mcp(session: Session, name: str = "parley", allow_send: bool | str = False) -> object:
+    """Bind the tool functions to a fresh MCP server (requires the `mcp` SDK).
+
+    Defaults to **read-only**: only status/chat/message/schedule reads are
+    exposed. Pass ``allow_send=True`` (or a comma-separated recipient
+    allowlist string) to expose the mutating tools; the `PARLEY_ALLOW_TO`
+    environment variable narrows recipients when set.
+    """
     try:
         cls, _ = _server_class()
     except ImportError as exc:
@@ -194,15 +263,19 @@ def build_mcp(session: Session, name: str = "parley") -> object:
         ) from exc
 
     scheduler = _scheduler(session)
+    allowlist = _recipient_allowlist(allow_send)
+    guard = _make_guard(session, allowlist) if allowlist else _noop_guard
     server = cls(name)
     for fn in TOOL_FUNCTIONS:
-        bound = _bind(fn, session, scheduler)
+        if fn in WRITE_TOOLS and not allow_send:
+            continue
+        bound = _bind(fn, session, scheduler, guard=guard)
         server.tool(name=fn.__name__[5:] if fn.__name__.startswith("tool_") else fn.__name__,
                     description=(fn.__doc__ or "").strip())(bound)
     return server
 
 
-def run(demo: bool = False, name: str = "parley", port: int | None = None) -> int:
+def run(demo: bool = False, name: str = "parley", port: int | None = None, allow_send: bool = False) -> int:
     """Build a Session + MCP server and serve on stdio. Blocks until stdin closes."""
     from .backends.webview import DEFAULT_PORT
 
@@ -212,8 +285,11 @@ def run(demo: bool = False, name: str = "parley", port: int | None = None) -> in
     else:
         session = Session(backend=backend_from_env(port=port))
     session.status()  # fail fast with a friendly error if the host is unreachable
-    server = build_mcp(session, name=name)
-    server.run()  # stdio transport
+    if allow_send:
+        built = build_mcp(session, name=name, allow_send=os.environ.get("PARLEY_ALLOW_TO") or True)
+    else:
+        built = build_mcp(session, name=name)
+    built.run()  # stdio transport
     return 0
 
 
@@ -227,5 +303,11 @@ if __name__ == "__main__":
     parser.add_argument("--demo", action="store_true", help="run against the offline simulator")
     parser.add_argument("--name", default="parley", help="server name shown by clients")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="WhatsApp CDP port to attach to")
+    parser.add_argument(
+        "--allow-send",
+        action="store_true",
+        help="expose mutating tools (send/reply/react/schedule). Default: read-only. "
+        "Restrict recipients with PARLEY_ALLOW_TO='Ava,Weekend Hikers'.",
+    )
     args = parser.parse_args()
-    sys.exit(run(demo=args.demo, name=args.name, port=args.port))
+    sys.exit(run(demo=args.demo, name=args.name, port=args.port, allow_send=args.allow_send))
