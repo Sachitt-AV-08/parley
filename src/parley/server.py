@@ -1,7 +1,10 @@
 """Local HTTP API — so any agent, webhook or script can drive WhatsApp.
 
-Deliberately boring: stdlib only, JSON in/out, permissive loopback CORS, an
-optional bearer token. Run with ``parley server --port 8300``.
+Deliberately boring: stdlib only, JSON in/out, loopback-only. A random
+bearer token is generated on first run (~/.parley/server.token) and
+required on every request. Only loopback Host values, and only same-origin
+browsers, are accepted (blocks DNS rebinding and cross-site POSTs). Run
+with ``parley server --port 8300``.
 
 Endpoints (all JSON):
 
@@ -21,10 +24,14 @@ Endpoints (all JSON):
 
 from __future__ import annotations
 
+import hmac
 import json
+import os
+import secrets
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from .scheduler import data_dir
 from .session import Session
 
 
@@ -36,11 +43,54 @@ def _jsonable(o):
     return o.__dict__ if hasattr(o, "__dict__") else str(o)
 
 
+# Host values we trust: only loopback aliases. Anything else (a real LAN IP,
+# a rebinding attacker's hostname) is refused before the token is even checked.
+ALLOWED_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def _uri_host(host_header: str) -> str:
+    """Strip the port from a Host header: '127.0.0.1:8300' -> '127.0.0.1'."""
+    h = (host_header or "").strip().lower()
+    if h.startswith("[") and "]" in h:
+        return h.split("]")[0][1:]
+    return h.rsplit(":", 1)[0] if h.count(":") == 1 else h
+
+
+def token_path() -> str:
+    return os.path.join(data_dir(), "server.token")
+
+
+def load_or_create_token() -> str:
+    """Return the persisted token, generating and storing a fresh one if needed.
+
+    Stored as ``~/.parley/server.token`` (0600 on POSIX), so every run of
+    ``parley server`` uses the same token instead of inventing a new one.
+    """
+    path = token_path()
+    try:
+        with open(path, encoding="utf-8") as fh:
+            token = fh.read().strip()
+        if token:
+            return token
+    except OSError:
+        pass
+    token = secrets.token_urlsafe(32)
+    os.makedirs(os.path.dirname(path) or ".", mode=0o700, exist_ok=True)
+    tmp = f"{path}.tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(token)
+    if os.name != "nt":
+        os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
+    return token
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "parley/0.1"
     session: Session
     scheduler: object
     token: str | None
+    same_origin: frozenset[str] = frozenset()
 
     # ------------------------------------------------------------- helpers
     def _send(self, code: int, payload) -> None:
@@ -54,11 +104,32 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _request_rejected(self) -> tuple[int, dict] | None:
+        """Return a (code, error) response if this request is untrustworthy.
+
+        Rejects: non-loopback Host (DNS rebinding), browser Origins that are
+        not this server's own origin (cross-site attacks), and form-encoded
+        POSTs (simple cross-site submits). ``curl`` and Python scripts send
+        none of those headers, so they pass the request-level gates and are
+        then checked against the bearer token.
+        """
+        if _uri_host(self.headers.get("Host", "")) not in ALLOWED_HOSTS:
+            return 403, {"ok": False, "error": "untrusted Host header"}
+        origin = self.headers.get("Origin", "")
+        if origin and origin not in self.same_origin:
+            return 403, {"ok": False, "error": "untrusted Origin header"}
+        if self.command == "POST":
+            length = int(self.headers.get("Content-Length", 0) or 0)
+            ctype = (self.headers.get("Content-Type", "") or "").lower()
+            if length and not ctype.startswith("application/json"):
+                return 400, {"ok": False, "error": "Content-Type must be application/json"}
+        return None
+
     def _authed(self) -> bool:
         if not self.token:
             return True
         header = self.headers.get("Authorization", "")
-        return header == f"Bearer {self.token}"
+        return hmac.compare_digest(header, f"Bearer {self.token}")
 
     def _body(self) -> dict:
         length = int(self.headers.get("Content-Length", 0) or 0)
@@ -74,9 +145,15 @@ class Handler(BaseHTTPRequestHandler):
 
     # ------------------------------------------------------------- routing
     def do_OPTIONS(self) -> None:  # noqa: N802
+        rejected = self._request_rejected()
+        if rejected:
+            return self._send(*rejected)
         self._send(204, {})
 
     def do_GET(self) -> None:  # noqa: N802
+        rejected = self._request_rejected()
+        if rejected:
+            return self._send(*rejected)
         if not self._authed():
             return self._send(401, {"ok": False, "error": "invalid bearer token"})
         path = urlparse(self.path).path
@@ -113,6 +190,9 @@ class Handler(BaseHTTPRequestHandler):
         return entry.__dict__
 
     def do_POST(self) -> None:  # noqa: N802
+        rejected = self._request_rejected()
+        if rejected:
+            return self._send(*rejected)
         if not self._authed():
             return self._send(401, {"ok": False, "error": "invalid bearer token"})
         path = urlparse(self.path).path
@@ -158,6 +238,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_DELETE(self) -> None:  # noqa: N802
         if not self._authed():
             return self._send(401, {"ok": False, "error": "invalid bearer token"})
+        rejected = self._request_rejected()
+        if rejected:
+            return self._send(*rejected)
         path = urlparse(self.path).path
         try:
             if path.startswith("/schedule/"):
@@ -179,11 +262,15 @@ def serve(
     port: int = 8300,
     demo: bool | None = None,
     token: str | None = None,
+    no_token: bool = False,
     poll: float = 1.0,
     cdp_port: int | None = None,
 ) -> None:
     from .backends.webview import DEFAULT_PORT
     from .scheduler import Scheduler, SchedulerThread
+
+    if not no_token:
+        token = token or os.environ.get("PARLEY_HTTP_TOKEN") or load_or_create_token()
 
     session = Session(demo=demo, port=cdp_port or DEFAULT_PORT)
     scheduler = Scheduler(session=session)
@@ -192,8 +279,17 @@ def serve(
     Handler.session = session
     Handler.scheduler = scheduler
     Handler.token = token
+    origin_port = int(port)
+    Handler.same_origin = frozenset(
+        f"http://{h}:{origin_port}" for h in sorted(ALLOWED_HOSTS)
+    )
     httpd = ParleyHTTPServer((host, port), Handler)
-    print(f"parley HTTP API listening on http://{host}:{port}" + (" (bearer token required)" if token else ""))
+    print(f"parley HTTP API listening on http://{host}:{port}")
+    if token:
+        print(f"  bearer token required: Authorization: Bearer {token}")
+        print(f"  token file: {token_path()}")
+    else:
+        print("  auth DISABLED (--no-token). Any local process can call this API.")
     print(f"parley scheduler watching {scheduler.path}")
     try:
         httpd.serve_forever()
@@ -212,6 +308,11 @@ if __name__ == "__main__":
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8300)
     parser.add_argument("--demo", action="store_true")
-    parser.add_argument("--token", default=None)
+    parser.add_argument("--token", default=None, help="explicit bearer token (default: generate + persist)")
+    parser.add_argument(
+        "--no-token",
+        action="store_true",
+        help="disable auth entirely (unsafe — any local process can call this API)",
+    )
     args = parser.parse_args()
-    serve(host=args.host, http_port=args.port, demo=args.demo, token=args.token)
+    serve(host=args.host, port=args.port, demo=args.demo, token=args.token, no_token=args.no_token)

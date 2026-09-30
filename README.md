@@ -136,8 +136,11 @@ parley schedule add --to Ava --text "morning standup reminder" \
 parley schedule list
 parley schedule run --once                # fire anything due, right now
 
-# any HTTP client can use it too:
-curl -X POST localhost:8300/send -H 'content-type: application/json' \
+# any HTTP client can use it too — `parley server` issues a token on first
+# run and prints it (see `~/.parley/server.token`); pass it as a Bearer token:
+export PARLEY_TOKEN="$(cat ~/.parley/server.token)"
+curl -X POST localhost:8300/send -H "content-type: application/json" \
+     -H "authorization: Bearer $PARLEY_TOKEN" \
      -d '{"to":"Ava","text":"via http"}'
 ```
 

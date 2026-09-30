@@ -317,7 +317,14 @@ def asdict_entry(e) -> dict:
 def cmd_server(args) -> int:
     from .server import serve
 
-    serve(host=args.host, port=args.http_port, demo=args.demo, token=args.token, cdp_port=args.port)
+    serve(
+        host=args.host,
+        port=args.http_port,
+        demo=args.demo,
+        token=args.token,
+        no_token=args.no_token,
+        cdp_port=args.port,
+    )
     return 0
 
 
@@ -432,7 +439,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_server = sub.add_parser("server", help="run the local HTTP API")
     p_server.add_argument("--host", default="127.0.0.1")
     p_server.add_argument("--port", type=int, default=8300, dest="http_port")
-    p_server.add_argument("--token", default=None, help="optional Bearer token for the local API")
+    p_server.add_argument(
+        "--token",
+        default=None,
+        help="Bearer token for the local API (default: persisted random token)",
+    )
+    p_server.add_argument(
+        "--no-token",
+        action="store_true",
+        help="disable auth entirely (unsafe — any local process can call this API)",
+    )
 
     sub.add_parser("tui", help="terminal UI (needs `parley[tui]`)")
 
