@@ -43,6 +43,27 @@ def test_send_by_name(capsys, iso_tmp):
     assert payload["chat"] == "e9f0a9c8d711b4a2b8002@g.us"
 
 
+def test_global_port_reaches_session(monkeypatch, capsys):
+    """--port must be passed to Session by every command that opens one."""
+    import parley.session as psession
+
+    calls: list[dict] = []
+
+    class FakeSession:
+        def __init__(self, **kwargs):
+            calls.append(kwargs)
+
+        def status(self):
+            return {"backend": "demo"}
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(psession, "Session", FakeSession)
+    assert main(["--port", "9700", "--json", "status"]) == 0
+    assert calls[0]["port"] == 9700
+
+
 def test_schedule_lifecycle(capsys, iso_tmp):
     code = main(
         ["--demo", "--json", "schedule", "add", "--to", "Ava", "--text", "soc",

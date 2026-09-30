@@ -98,6 +98,34 @@ class TestWrites:
         cleared = session.react(target.id, None)
         assert cleared.text in ("", None)
 
+    def test_find_message_matches_exact_and_prefix(self, session):
+        target = session.messages("15551234567@c.us")[-1]
+        assert session.find_message(target.id) is not None
+        assert session.find_message(target.id.split(":")[0]) is not None
+        assert session.find_message("no-such-message-id") is None
+
+    def test_find_message_scan_past_first_50_chats(self, session, monkeypatch):
+        """Reply/react must reach messages that live in chats beyond the first
+        screenful — the old 50-chat scan missed them."""
+        from parley.models import Message
+
+        burried = Message(
+            id="deadbeef09",
+            chat="99999999999@c.us",
+            author="Omar",
+            text="buried but findable",
+            timestamp=1,
+        )
+        fake_chats = [type("C", (), {"id": f"chat-{i}@c.us", "name": f"Chat {i}"})() for i in range(60)]
+        fake_chats.append(type("C", (), {"id": "99999999999@c.us", "name": "Omar"})())
+        monkeypatch.setattr(session, "chats", lambda limit=50, unread_only=False: fake_chats)
+        monkeypatch.setattr(
+            session, "messages",
+            lambda chat_id, limit=50: [burried] if chat_id == "99999999999@c.us" else [],
+        )
+        found = session.find_message(burried.id)
+        assert found is not None and found.text == burried.text
+
 
 def test_pacing_budget_enforced():
     from parley.session import HumanPacing

@@ -78,6 +78,14 @@ def test_schedule_flow(session):
     assert m.tool_cancel_schedule(scheduler, entry_id=sid)["ok"] is True
 
 
+def test_cancel_unknown_schedule_reports_removed_false(session):
+    import parley.mcp_server as m
+    from parley.scheduler import Scheduler
+
+    result = m.tool_cancel_schedule(Scheduler(session=session), entry_id="nope")
+    assert result["ok"] is True and result["removed"] is False
+
+
 def test_bind_hides_injected_args():
     from parley.mcp_server import _bind
 
