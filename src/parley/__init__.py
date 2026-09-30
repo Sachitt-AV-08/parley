@@ -14,7 +14,8 @@ Design points:
 
 Try it::
 
-    curl -fsSL https://raw.githubusercontent.com/Sachitt-AV-08/parley/main/install.sh | sh   # or the PowerShell one-liner in the README
+    curl -fsSL https://raw.githubusercontent.com/Sachitt-AV-08/parley/main/install.sh | sh
+    # (Windows one-liner and AI-agent setup: see the README)
     parley setup        # enable the local WebView2 debugging port
     parley status       # confirm the desktop app is attached
     parley chats        # list recent conversations
