@@ -30,6 +30,13 @@ body:
     attributes:
       label: Environment
       description: Windows/macOS/Linux, WhatsApp Desktop or browser tab, WhatsApp/WebView2 build if relevant.
+  - type: input
+    id: whatsapp_build
+    attributes:
+      label: WhatsApp Desktop build
+      description: 'e.g. 2.30xx.x (from WhatsApp Desktop > Help > About). Required for live-attach bugs.'
+    validations:
+      required: true
   - type: textarea
     id: steps
     attributes:
