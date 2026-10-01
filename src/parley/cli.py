@@ -66,12 +66,16 @@ def _open_session(args, *, write: bool) -> None:
     if write:
         from .pacing import HumanPacing
 
+        def _val(name: str, default):
+            v = getattr(args, name, None)
+            return v if v is not None else default
+
         pacing = HumanPacing(
-            typing_per_char=getattr(args, "typing_per_char", None) or 0.09,
-            typing_max=getattr(args, "typing_max", None) or 3.5,
-            network=getattr(args, "network", None) or 0.6,
-            window_seconds=getattr(args, "window_seconds", None) or 60,
-            window_budget=getattr(args, "window_budget", None) or 18,
+            typing_per_char=_val("typing_per_char", 0.09),
+            typing_max=_val("typing_max", 3.5),
+            network=_val("network", 0.6),
+            window_seconds=_val("window_seconds", 60),
+            window_budget=_val("window_budget", 18),
         )
     return Session(demo=args.demo, pacing=pacing, port=args.port)
 

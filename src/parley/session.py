@@ -168,7 +168,8 @@ class Session:
         """Send `text` to a chat id, contact name, group subject, or number."""
         chat_id, name = self.resolve_recipient(chat)
         msg = self._guarded(
-            lambda: self.backend.send(OutboxMessage(chat=chat_id, text=str(text), name=name))
+            lambda: self.backend.send(OutboxMessage(chat=chat_id, text=str(text), name=name)),
+            text=str(text),
         )
         audit_send(chat_id, name or chat, text, source="send")
         return msg
@@ -179,7 +180,8 @@ class Session:
         if target is None:
             raise ValueError(f"could not locate message {message_id!r}")
         msg = self._guarded(
-            lambda: self.backend.send(OutboxMessage(chat=target.chat, text=str(text), quoted_message_id=message_id))
+            lambda: self.backend.send(OutboxMessage(chat=target.chat, text=str(text), quoted_message_id=message_id)),
+            text=str(text),
         )
         audit_send(target.chat, target.chat, text, source="reply")
         return msg
@@ -196,13 +198,13 @@ class Session:
     def _resolve_chat_id(self, chat: str) -> str:
         return self.resolve_recipient(chat)[0]
 
-    def _guarded(self, op):
+    def _guarded(self, op, text: str = ""):
         last_error: BaseException | None = None
         for attempt in range(self.retries + 1):
             if attempt:
                 time.sleep(DEFAULT_RETRY_BACKOFF * attempt)
             try:
-                self.pacing.before_send("")
+                self.pacing.before_send(text)
                 return op()
             except (ProtocolError, ConnectionError, OSError) as exc:
                 last_error = exc

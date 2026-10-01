@@ -100,9 +100,12 @@ class ScheduleEntry:
         if self.status != "pending":
             return False
         try:
-            return now >= datetime.strptime(self.at, ISO) or now >= datetime.fromisoformat(self.at)
+            return now >= datetime.fromisoformat(self.at)
         except ValueError:
-            return False
+            try:
+                return now >= datetime.strptime(self.at, ISO)
+            except ValueError:
+                return False
 
     def _then_datetime(self) -> datetime:
         try:
@@ -152,12 +155,14 @@ class Scheduler:
     ) -> ScheduleEntry:
         if repeat not in (None,) + REPEATS:
             raise ValueError(f"--repeat must be one of {', '.join(REPEATS)} (or omitted)")
+        # Validate 'at' format for all entries, not just repeating ones
+        try:
+            datetime.fromisoformat(at)
+        except ValueError:
+            raise ValueError(f"--at must be ISO time (e.g. 2026-10-01T09:00:00), got {at!r}") from None
         next_at = at
         if repeat:
-            try:
-                nxt = datetime.fromisoformat(at)
-            except ValueError:
-                raise ValueError(f"--at must be ISO time, got {at!r}") from None
+            nxt = datetime.fromisoformat(at)
             if nxt < datetime.now() - timedelta(seconds=30):
                 raise ValueError(
                     "--at is in the past; repeating entries must start in the future "
