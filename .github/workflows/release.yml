@@ -163,11 +163,11 @@ jobs:
       - name: Download release wheel
         run: |
           WHEEL_URL="https://github.com/Sachitt-AV-08/parley/releases/download/${{ github.ref_name }}/parley_wa-${{ needs.build-and-release.outputs.VERSION }}-py3-none-any.whl"
-          curl -L -o parley_wa.whl "$WHEEL_URL"
-          ls -la parley_wa.whl
+          curl -L -o "parley_wa-${{ needs.build-and-release.outputs.VERSION }}-py3-none-any.whl" "$WHEEL_URL"
+          ls -la *.whl
 
       - name: Test wheel install
         run: |
-          pip install "parley-wa[mcp] @ ./parley_wa.whl"
+          pip install "parley-wa[mcp] @ ./parley_wa-${{ needs.build-and-release.outputs.VERSION }}-py3-none-any.whl"
           parley --version
           parley doctor --help
