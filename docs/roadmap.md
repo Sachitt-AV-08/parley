@@ -5,4 +5,4 @@
 - Media sends (images, voice notes) and message **download** — *lands after security hardening*
 - Webhooks  `parley server` push channels — *lands after security hardening*
 - A `parley as a service` mode for containers (still local-first)
-- Contributions welcome - see [CONTRIBUTING](CONTRIBUTING.md)
+- Contributions welcome - see [CONTRIBUTING](../CONTRIBUTING.md)

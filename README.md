@@ -39,12 +39,17 @@ irm https://raw.githubusercontent.com/Sachitt-AV-08/parley/main/install.ps1 | ie
 curl -fsSL https://raw.githubusercontent.com/Sachitt-AV-08/parley/main/install.sh | sh
 ```
 
-The installer detects `uv` → `pipx` → `pip`, installs `parley-wa` (CLI, TUI and MCP extras) from the latest [GitHub Release](https://github.com/Sachitt-AV-08/parley/releases) (sha256 checksums included), enables the local debugging port, and prints the two commands to start. `pip install 'parley-wa'[mcp]` works **once the PyPI publish lands**; until then use the installer or a release wheel URL.
+The installer detects `uv` → `pipx` → `pip`, installs `parley-wa[mcp]` (CLI and MCP extras) from the latest [GitHub Release](https://github.com/Sachitt-AV-08/parley/releases) (sha256 checksums included), and prints next steps. `pip install 'parley-wa[mcp]'` works **once the PyPI publish lands**; until then use the installer or a release wheel URL. Run `parley setup` manually to enable the debugging port.
 
 **One line to send from a script on any machine:**
 
 ```bash
-pip install 'parley-wa'[mcp]      # or: pip install <release wheel URL>
+# Use the installer (recommended):
+irm https://raw.githubusercontent.com/Sachitt-AV-08/parley/main/install.ps1 | iex   # Windows
+curl -fsSL https://raw.githubusercontent.com/Sachitt-AV-08/parley/main/install.sh | sh   # macOS/Linux
+
+# Or with a release wheel URL:
+pip install 'parley-wa[mcp] @ https://github.com/Sachitt-AV-08/parley/releases/download/v0.3.2/parley_wa-0.3.2-py3-none-any.whl'
 parley setup            # enable the local debugging port (auto-undoable)
 parley send --to Ava --text "ci is green"   # resolves Ava -> live chat -> sends -> confirms it landed
 ```

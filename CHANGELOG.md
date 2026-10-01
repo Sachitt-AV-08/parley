@@ -4,6 +4,21 @@ All notable changes to parley are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 does its best to adhere to [Semantic Versioning](https://semver.org).
 
+## [0.3.2] - 2026-10-01
+
+### Fixed
+- **Human pacing enabled**: `before_send()` now receives the actual message text for proportional typing delays (was passing empty string).
+- **MCP allowlist guard**: now only applied to write tools (send/reply/react/schedule); read tools no longer blocked by `PARLEY_ALLOW_TO`.
+- **Scheduler ISO parsing**: `due()` now correctly handles `fromisoformat` timestamps with timezone/fractional seconds; `add()` validates `at` for all entries.
+- **CLI pacing defaults**: `--network 0` etc. now respected (fixed `or` → `is not None`).
+- **Installers**: corrected PEP 508 syntax (`pkg[mcp] @ URL`), fixed flag parsing order, fixed PowerShell command invocation.
+- **Release workflow**: single build job (wheel + sdist), version guard, substituted body, test+lint gate, removed fake verification step.
+
+## [0.3.1] - 2026-10-01
+
+### Fixed
+- Installer corrections (see 0.3.2)
+
 ## [0.3.0] - 2026-09-30
 
 ### Added
