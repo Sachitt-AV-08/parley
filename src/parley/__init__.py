@@ -34,7 +34,7 @@ from .models import Chat, Contact, Message, OutboxMessage
 from .pacing import HumanPacing
 from .session import Session, parley_connect
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 
 __all__ = [
     "Chat",
