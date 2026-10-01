@@ -200,12 +200,14 @@ def _make_guard(session: Session, allowlist: tuple[str, ...]):
     return guard
 
 
-def _bind(fn, session, scheduler, guard=None):
+def _bind(fn, session, scheduler, guard=None, is_write_tool=False):
     """Build a real named callable for ``fn`` that an MCP client can inspect.
 
     Keeps the public parameter names and defaults (schema-wise) while hiding
     the injected ``session`` / ``scheduler`` arguments. Works with both the
     ``mcp<2`` FastMCP decorator and the ``mcp>=2`` MCPServer API.
+
+    Only injects the allowlist guard for write tools (send/reply/react/schedule).
     """
     sig = inspect.signature(fn)
     parts = []
@@ -217,12 +219,20 @@ def _bind(fn, session, scheduler, guard=None):
         else:
             parts.append(f"{p.name}={p.default!r}")
     params = ", ".join(parts)
-    src = (
-        f"def {fn.__name__}({params}):\n"
-        "    _g = _guard(**{k: v for k, v in locals().items() if not k.startswith('_')})\n"
-        "    return _g if _g is not None else _ret(_fn, _session, _scheduler, "
-        "**{k: v for k, v in locals().items() if not k.startswith('_')})"
-    )
+    # Only add guard call for write tools
+    if is_write_tool:
+        src = (
+            f"def {fn.__name__}({params}):\n"
+            "    _g = _guard(**{k: v for k, v in locals().items() if not k.startswith('_')})\n"
+            "    return _g if _g is not None else _ret(_fn, _session, _scheduler, "
+            "**{k: v for k, v in locals().items() if not k.startswith('_')})"
+        )
+    else:
+        src = (
+            f"def {fn.__name__}({params}):\n"
+            "    return _ret(_fn, _session, _scheduler, "
+            "**{k: v for k, v in locals().items() if not k.startswith('_')})"
+        )
     ns = {
         "_ret": lambda f, s, sc, **kw: f(s, **kw) if "session" in f.__code__.co_varnames else f(sc, **kw),
         "_fn": fn,
@@ -269,7 +279,8 @@ def build_mcp(session: Session, name: str = "parley", allow_send: bool | str = F
     for fn in TOOL_FUNCTIONS:
         if fn in WRITE_TOOLS and not allow_send:
             continue
-        bound = _bind(fn, session, scheduler, guard=guard)
+        is_write = fn in WRITE_TOOLS
+        bound = _bind(fn, session, scheduler, guard=guard, is_write_tool=is_write)
         server.tool(name=fn.__name__[5:] if fn.__name__.startswith("tool_") else fn.__name__,
                     description=(fn.__doc__ or "").strip())(bound)
     return server
