@@ -29,3 +29,18 @@ jobs:
           uv run parley --demo --json status
           uv run parley --demo --json send --to Ava --text 'hi from ci'
           uv run parley --demo --json schedule list
+
+  build-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Build
+        run: uv build
+      - name: Smoke test wheel
+        run: |
+          pip install dist/*.whl[mcp]
+          parley --version
+          parley doctor --help

@@ -9,69 +9,78 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  test-and-lint:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up Python ${{ matrix.python }}
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python }}
+          python-version: "3.12"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          python-version: ${{ matrix.python }}
+          python-version: "3.12"
 
-      - name: Build wheel
-        run: |
-          uv build --wheel
-          ls -la dist/
+      - name: Install deps
+        run: uv sync --extra mcp --extra dev
 
-      - name: Upload wheel artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheel-py${{ matrix.python }}
-          path: dist/*.whl
-          retention-days: 30
+      - name: Lint
+        run: uv run ruff check src tests
 
-  create-release:
-    needs: build-and-release
+      - name: Test
+        run: uv run pytest
+
+  build-and-release:
+    needs: test-and-lint
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Download all wheels
-        uses: actions/download-artifact@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          pattern: wheel-py*
-          merge-multiple: true
-          path: dist/
+          python-version: "3.12"
 
-      - name: Verify wheels
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify version matches tag
         run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PY_VERSION=$(uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          if [ "$TAG_VERSION" != "$PY_VERSION" ]; then
+            echo "ERROR: Tag version ($TAG_VERSION) != pyproject.toml version ($PY_VERSION)"
+            exit 1
+          fi
+          echo "Version check passed: $TAG_VERSION"
+
+      - name: Build
+        run: |
+          uv build
           ls -la dist/
+
+      - name: Verify wheel contents
+        run: |
           for w in dist/*.whl; do
             echo "=== $w ==="
-            unzip -l "$w" | head -20
+            unzip -l "$w" | head -30
           done
 
       - name: Generate checksums
         run: |
           cd dist
-          sha256sum *.whl > SHA256SUMS.txt
+          sha256sum * > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
       - name: Create Release
@@ -84,6 +93,7 @@ jobs:
           generate_release_notes: true
           files: |
             dist/*.whl
+            dist/*.tar.gz
             dist/SHA256SUMS.txt
           body: |
             ## Parley ${{ github.ref_name }}
@@ -92,8 +102,11 @@ jobs:
 
             **From GitHub Release (recommended):**
             ```bash
-            # Pick the wheel for your Python version
-            pip install https://github.com/Sachitt-AV-08/parley/releases/download/${{ github.ref_name }}/parley_wa-<version>-py3-none-any.whl
+            # Universal wheel (works on all Python 3.10+)
+            pip install https://github.com/Sachitt-AV-08/parley/releases/download/${{ github.ref_name }}/parley_wa-${{ github.ref_name#v }}-py3-none-any.whl
+
+            # With MCP extra
+            pip install 'parley-wa[mcp] @ https://github.com/Sachitt-AV-08/parley/releases/download/${{ github.ref_name }}/parley_wa-${{ github.ref_name#v }}-py3-none-any.whl'
             ```
 
             **From Git (always latest):**
@@ -122,8 +135,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  update-installers:
-    needs: create-release
+  smoke-install:
+    needs: build-and-release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -131,8 +144,24 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify install.ps1
-        run: pwsh -c ". .\install.ps1; Write-Host 'OK'" 2>&1 | head -5 || true
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-      - name: Verify install.sh
-        run: bash -n install.sh && echo "install.sh OK"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download release wheel
+        run: |
+          WHEEL_URL="https://github.com/Sachitt-AV-08/parley/releases/download/${{ github.ref_name }}/parley_wa-${{ github.ref_name#v }}-py3-none-any.whl"
+          curl -L -o parley_wa.whl "$WHEEL_URL"
+          ls -la parley_wa.whl
+
+      - name: Test wheel install
+        run: |
+          pip install "parley-wa[mcp] @ ./parley_wa.whl"
+          parley --version
+          parley doctor --help
