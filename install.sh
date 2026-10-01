@@ -11,18 +11,22 @@ RED='\033[0;31m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-VERSION="${1:-latest}"
+# Parse flags FIRST
 FORCE=false
 NO_MCP=false
+POSITIONAL=()
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --force) FORCE=true; shift ;;
         --no-mcp) NO_MCP=true; shift ;;
         -*) echo "Unknown option: $1"; exit 1 ;;
-        *) VERSION="$1"; shift ;;
+        *) POSITIONAL+=("$1"); shift ;;
     esac
 done
+
+# Now get version from positional args or default
+VERSION="${POSITIONAL[0]:-latest}"
 
 echo -e "${CYAN}╔══════════════════════════════════════════╗${NC}"
 echo -e "${CYAN}║     Parley Installer                     ║${NC}"
@@ -33,7 +37,7 @@ echo ""
 # Get latest version if not specified
 if [[ "$VERSION" == "latest" ]]; then
     echo -e "${YELLOW}Fetching latest release...${NC}"
-    VERSION=$(curl -s https://api.github.com/repos/Sachitt-AV-08/parley/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+    VERSION=$(curl -s https://api.github.com/repos/Sachitt-AV-08/parley/releases/latest 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/') || true
     if [[ -z "$VERSION" ]]; then
         echo -e "${RED}Failed to fetch latest release, using v0.3.0${NC}"
         VERSION="v0.3.0"
@@ -47,16 +51,16 @@ echo ""
 if command -v uv &> /dev/null; then
     echo -e "${GREEN}Found uv - using uv tool install${NC}"
     if [[ "$NO_MCP" == true ]]; then
-        uv tool install "parley-wa@${VERSION}"
+        uv tool install "parley-wa @ git+https://github.com/Sachitt-AV-08/parley.git@${VERSION}"
     else
-        uv tool install "parley-wa[mcp]@${VERSION}"
+        uv tool install "parley-wa[mcp] @ git+https://github.com/Sachitt-AV-08/parley.git@${VERSION}"
     fi
 elif command -v pipx &> /dev/null; then
     echo -e "${GREEN}Found pipx - using pipx install${NC}"
     if [[ "$NO_MCP" == true ]]; then
-        pipx install "parley-wa==${VERSION#v}"
+        pipx install "parley-wa @ git+https://github.com/Sachitt-AV-08/parley.git@${VERSION}"
     else
-        pipx install "parley-wa[mcp]==${VERSION#v}"
+        pipx install "parley-wa[mcp] @ git+https://github.com/Sachitt-AV-08/parley.git@${VERSION}"
     fi
 elif command -v pip &> /dev/null; then
     echo -e "${GREEN}Found pip - using pip install${NC}"
@@ -64,7 +68,7 @@ elif command -v pip &> /dev/null; then
     if [[ "$NO_MCP" == true ]]; then
         pip install "$WHEEL_URL"
     else
-        pip install "$WHEEL_URL[mcp]"
+        pip install "parley-wa[mcp] @ $WHEEL_URL"
     fi
 else
     echo -e "${RED}No installer found (uv/pipx/pip). Please install Python first.${NC}"
