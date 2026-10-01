@@ -1,6 +1,6 @@
 [project]
 name = "parley-wa"
-version = "0.3.1"
+version = "0.3.2"
 description = "Drive your installed WhatsApp Desktop locally — read, send, reply and react — no cloud, no QR, no Composio."
 readme = "README.md"
 requires-python = ">=3.10"
