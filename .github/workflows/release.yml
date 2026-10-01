@@ -168,6 +168,7 @@ jobs:
 
       - name: Test wheel install
         run: |
-          pip install "parley-wa[mcp] @ ./parley_wa-${{ needs.build-and-release.outputs.VERSION }}-py3-none-any.whl"
+          WHEEL_FILE="parley_wa-${{ needs.build-and-release.outputs.VERSION }}-py3-none-any.whl"
+          pip install "parley-wa[mcp] @ file://${PWD}/${WHEEL_FILE}"
           parley --version
           parley doctor --help
